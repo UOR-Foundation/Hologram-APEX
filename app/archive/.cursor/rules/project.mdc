@@ -1,0 +1,616 @@
+---
+alwaysApply: true
+---
+
+# Hologramapp Project Architecture: Complete Specification
+
+## 🎯 Primary Goal: Zero-Interpretation Compute Through Compile-Time Kernels
+
+Hologramapp achieves **general-purpose compute acceleration** by compiling ALL operations to native binary kernels at build time. **NO runtime interpretation is permitted** - all operations must execute as pre-compiled native code loaded as `.so`/`.dylib` libraries.
+
+### Critical Architecture Requirements
+
+1. **❌ ELIMINATED**: Runtime string parsing, circuit compilation at runtime, GeneratorCall enum interpretation
+2. **✅ REQUIRED**: Compile-time kernel generation, binary library loading, geometric folding with 2-3 prime factorizations
+3. **Geometric Folding Principle**: All data takes on geometric forms that fold onto operations with at most 2-3 prime factorizations. Class indices are COMPILE-TIME constants.
+
+---
+
+## Core Mathematical Foundation: Atlas-12288
+
+### The R96 Classification System
+
+**Atlas classifies all byte data (256 values) into 96 resonance classes:**
+
+```
+256 bytes → 96 classes (3:8 compression ratio)
+```
+
+**Key properties:**
+
+- Every byte value maps to exactly one of 96 classes via the Atlas graph structure
+- Each class has an associated `AtlasLabel` with 7 coordinates: (e1, e2, e3, d45, e6, e7)
+- Classes have mirror pairs (48 pairs total)
+- 12 classes are "unity classes" (sum to zero in resonance space)
+- Class-based addressing enables topology-aware memory layouts
+
+**Resonance Space:**
+
+- 96 resonance accumulators (exact rational arithmetic, no floating-point errors)
+- Phase counter (mod 768): 8 phases × 96 classes
+- Boundary addressing: 48 pages × 256 bytes = 12,288 byte pool per class
+- Total memory structure: 96 classes × 12,288 bytes = 1.18 MB (designed to be L2 cache-resident)
+
+### Memory Architecture: Cache-Resident Boundary Pool
+
+**CPU Backend Memory Hierarchy:**
+
+```
+L1 Cache (32 KB/core)
+  └─ Active class working set (2-3 classes being operated on)
+
+L2 Cache (256 KB - 1 MB/core)
+  └─ Boundary pool: 96 classes × 12,288 bytes = 1.18 MB
+     └─ Each class: 48 pages × 256 bytes
+
+RAM
+  └─ Linear pool (unlimited overflow storage)
+```
+
+**Why this matters:** The boundary pool is **designed to be fully cache-resident** in L2, enabling:
+
+- O(1) random access within any class
+- Zero bus traffic for boundary operations
+- Class-based SIMD operations (entire pages processed in vector registers)
+
+---
+
+## Runtime Interpretation Elimination: CRITICAL CONSTRAINTS
+
+### Why Runtime String Compilation Is Unacceptable
+
+**Current flow (❌ FORBIDDEN at runtime):**
+
+```rust
+// NEVER DO THIS:
+let circuit = "merge@c00[c01,c02]";
+let compiled = CircuitCompiler::compile(circuit)?; // ❌ RUNTIME STRING PARSING!
+exec.execute_circuit(&compiled)?; // ❌ INTERPRETATION!
+```
+
+**Problems:**
+
+- String parsing at runtime = interpreter overhead
+- AST construction = heap allocation
+- Canonicalization = repeated computation
+- GeneratorCall enum match statements = runtime branching
+- Memory layout unknown at compile time
+- Cannot optimize for cache locality
+
+### Required Solution: Compile-Time Kernel Generation
+
+**Workflow:**
+
+```
+BUILD TIME:
+Python/Rust → Generate kernel definitions → Compile to native code → Create .so files
+
+RUNTIME:
+Load .so files via dlopen() → Execute native code DIRECTLY (ZERO interpretation!)
+```
+
+**Geometric Folding Example:**
+
+```rust
+// At compile time:
+const CLASS_A: u8 = 42;  // COMPILE-TIME constant!
+const CLASS_B: u8 = 17;  // COMPILE-TIME constant!
+const CLASS_C: u8 = geometric_fold(42, 17);  // = 59 (COMPILE-TIME!)
+
+// Generated native code:
+mov r0, [class_42_base + index]  // Direct memory access
+mov r1, [class_17_base + index]
+add r0, r0, r1                   // Pure arithmetic
+mov [class_59_base + index], r0 // Direct store
+```
+
+**Key Benefits:**
+
+- Class indices known at compile time → optimal cache layout
+- Memory access patterns optimized at build time
+- SIMD alignment guaranteed at compile time
+- Zero runtime branching or interpretation
+
+---
+
+## Architecture Layers: From FFI to Hardware Execution
+
+### Complete Call Stack
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ FFI Layer (hologram-ffi)                                    │
+│ - UniFFI bindings for Python, Swift, Kotlin, TypeScript     │
+│ - Cross-language C ABI (vector_add_f32, gemm_f32, etc.)    │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Hologram Core Operations (hologram-core)                    │
+│ - High-level operations: ops::math, ops::reduce, etc.       │
+│ - ops::math::vector_add, ops::reduce::sum                   │
+│ - ops::activation::sigmoid, ops::loss::mse                  │
+│ - ops::linalg::gemm, ops::memory::copy                       │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ↓ kernel dispatch (compile-time)
+┌─────────────────────────────────────────────────────────────┐
+│ Pre-Compiled Binary Kernels (.so/.dylib)                   │
+│ - vector_add_kernel.so, gemm_kernel.so, etc.                │
+│ - Loaded once at startup via dlopen()                      │
+│ - Native code execution (ZERO interpretation!)              │
+│ - Class indices: COMPILE-TIME constants                     │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ↓ native code calls
+┌─────────────────────────────────────────────────────────────┐
+│ Atlas Backend Abstraction                                    │
+│ - Topology-aware allocation                                  │
+│ - Register file (256 scalar + 16 predicate registers)       │
+│ - Phase coordination (mod 768)                              │
+│ - Resonance accumulator management                          │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ↓ dispatches to
+         ┌───────────────┼───────────────┐
+         │               │               │
+         ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ CPU Backend  │ │  GPU Backend │ │ Quantum     │
+│ (current)    │ │              │ │ Backend     │
+│              │ │              │ │             │
+│ Cache-       │ │ Thread blocks│ │ Qubits =    │
+│ resident     │ │ = classes    │ │ classes     │
+│ topology     │ │              │ │             │
+└──────────────┘ └──────────────┘ └──────────────┘
+         │               │               │
+         └───────────────┼───────────────┘
+                         │
+                         ↓ executes ISA instructions
+┌─────────────────────────────────────────────────────────────┐
+│ Atlas ISA Execution                                          │
+│ - 55 instruction types: ADD, MUL, LDG, STG, BRA, etc.     │
+│ - Type-safe register operations (I32, F32, I64, F64, etc.)│
+│ - Control flow: BRA, CALL, RET, LOOP                       │
+│ - Atlas-specific: CLS_GET, MIRROR, PHASE_ADV, BOUND_MAP     │
+│ - Reduction: REDUCE_ADD, REDUCE_MIN, REDUCE_MAX            │
+│ - Transcendental: EXP, LOG, SQRT, SIN, COS, TANH           │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ↓ operates on
+┌─────────────────────────────────────────────────────────────┐
+│ Atlas Runtime (atlas-runtime)                                │
+│ - AtlasSpace state management                               │
+│ - C96 state: 96 classes with resonance data                  │
+│ - Φ-addressing: (class, page, byte) coordinates            │
+│ - Phase tracking (mod 768)                                   │
+│ - Buffer handles → topology mapping                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Execution Pipeline (CPU Backend)
+
+**4-stage pipeline with zero interpretation overhead:**
+
+```
+1. Validate  →  Type safety, register bounds, instruction compliance
+2. Label Resolve → Build jump map for control flow
+3. Execute    → Sequential ISA instruction dispatch
+4. Synchronize → Write-back to AtlasSpace, cache flush
+```
+
+**No interpreters, no JIT compilation at runtime** - all operations pre-compiled to native code or binary kernels (`.so`, `.dylib`, `.dll`).
+
+---
+
+## Performance Principles
+
+### 1. Canonical Form = Fewer Operations
+
+**Canonicalization reduces operation count:**
+
+- Typical: 75% reduction (4 ops → 1 op)
+- Best case: 87.5% reduction (8 ops → 1 op)
+- Pattern-based: H²=I, X²=I, Z²=I, HXH=Z, S²=Z, I·I=I
+
+**Example:**
+
+```rust
+// Original: 4 operations (copy@c05 . mark@c21) × 2 = 8 ops
+"copy@c05 . mark@c21 . copy@c05 . mark@c21"
+
+// After canonicalization: I (identity) = 1 op
+"mark@c00"
+
+// Result: 87.5% reduction (8 → 1 operations)
+```
+
+### 2. Cache-Resident Everything
+
+**Memory layout decisions driven by cache architecture:**
+
+- **Boundary pool (1.18 MB)** fits entirely in L2 cache
+- **Active class working set (2-3 classes)** fits in L1 cache
+- **Φ-addressing** enables direct array indexing (no hash tables)
+- **Class-based SIMD** processes entire 256-byte pages in vectors
+
+**Bandwidth elimination:**
+
+- No bus traffic for boundary operations (all in L2)
+- No bus traffic for active class reads (all in L1)
+- Only overflow to linear pool hits main memory
+
+### 3. Topology-Aware Execution
+
+**Traditional computing:** Generic data → Generic algorithm
+
+**Atlas computing:** Data topology determines computation structure
+
+**Example:**
+
+```rust
+// Same vector_add operation
+// - 128-byte data → uses class 42 (fits in L2 boundary pool)
+// - 1MB data → uses class 42 + linear pool overflow
+
+// Backend automatically:
+// 1. Classifies data to resonance classes
+// 2. Allocates boundary vs. linear pool based on topology
+// 3. Structures SIMD operations by class affinity
+// 4. Schedules cache-friendly execution
+```
+
+### 4. Zero Interpretation Overhead
+
+**Kernel compilation strategy:**
+
+- All operations compile to native ISA instructions
+- Binary kernels (`.so` files) are pre-compiled and loaded
+- Register allocation statically determined
+- Type safety enforced at compile-time (not runtime checks on every access)
+
+**Example kernel compilation:**
+
+```rust
+// High-level operation
+ops::math::vector_add(&exec, &a, &b, &mut c, len)?;
+
+// Compiles to:
+// - Circuit: "merge@c00[c01,c02]"
+// - Canonicalizes: "merge@c00[c01,c02]" (already minimal)
+// - Emits ISA program:
+//   [
+//     LDG(I32, R0, a_addr),     // Load input a
+//     LDG(I32, R1, b_addr),     // Load input b
+//     ADD(I32, R2, R0, R1),     // Compute a + b
+//     STG(R2, c_addr),           // Store result
+//     EXIT
+//   ]
+// - CPUBackend executes ISA directly (no interpreter)
+```
+
+---
+
+## Technical Specifications
+
+### Atlas ISA Instruction Categories (55 total)
+
+**Data Movement (§7.1):** LDG, STG, LDS, STS, MOV, CVT
+
+**Arithmetic (§7.2):** ADD, SUB, MUL, DIV, MAD, FMA, MIN, MAX, ABS, NEG
+
+**Logic (§7.3):** AND, OR, XOR, NOT, SETcc, SEL
+
+**Control Flow (§7.4):** BRA, CALL, RET, LOOP
+
+**Synchronization (§7.5):** BAR_SYNC, MEM_FENCE
+
+**Atlas-Specific (§7.6):** CLS*GET, MIRROR, UNITY_TEST, NBR*\*, RES_ACCUM, PHASE_GET, PHASE_ADV, BOUND_MAP
+
+**Reductions (§7.7):** REDUCE_ADD, REDUCE_MIN, REDUCE_MAX
+
+**Transcendentals (§7.8):** EXP, LOG, SQRT, SIN, COS, TANH
+
+### Register File (Atlas Backend)
+
+```
+256 scalar registers (R0-R255)
+16 predicate registers (P0-P15)
+Type tracking: Option<Type>[256]
+
+Register lifetime:
+1. Uninitialized → No type, read fails
+2. Initialized → Type set by first write
+3. Valid → Type matches on read
+4. Overwritten → Type changes on write (CVT instruction)
+```
+
+### Phase Coordination (mod 768)
+
+**Phase counter enables time-ordered execution:**
+
+- Range: [0, 768)
+- Formula: PHASE_MODULUS = 8 × 96 (8 phases × 96 classes)
+- Operations: PHASE_GET, PHASE_ADV(δ) where δ < 768
+- Used for: Burst scheduling, resonance accumulation ordering
+
+### Resonances (96 Rational Accumulators)
+
+**Exact arithmetic, no floating-point error:**
+
+- Type: `[Rational; 96]` (from num_rational crate)
+- Operations: RES_ACCUM (add value to class), UNITY_TEST (check if sum ≈ 0)
+- Used for: Geometric invariants, verification, optimization
+
+---
+
+## Key Constraint: Bus Limitation Elimination
+
+**Requirement:** Operations must fit entirely in cache hierarchy to avoid CPU↔RAM bus traffic.
+
+**Solution architecture:**
+
+1. **Boundary pool (1.18 MB)** designed for L2 residency
+2. **Class-based allocation** enables locality-aware placement
+3. **Topology-aware scheduling** maximizes cache reuse
+4. **SIMD operations** process entire classes in single cache line reads
+5. **Prefetching strategies** anticipate class access patterns
+
+**Fallback strategy:** Operations exceeding boundary pool capacity use linear pool with explicit memory management, but architecture optimizes for cache-resident paths.
+
+---
+
+## Kernel Generation: Higher-Level → Native Code
+
+### Using Python/Rust for Kernel Definition (Build Time Only)
+
+**CRITICAL**: Higher-level languages like Python can be used to define kernels, but ONLY at build time to generate native code. NO Python interpreter at runtime.
+
+**Workflow:**
+
+```
+BUILD TIME (Python allowed):
+┌─────────────────────────────────────────┐
+│ 1. Python defines kernels              │
+│    kernel_def.py:                       │
+│      def vector_add():                  │
+│          return "for i in 0..n {"       │
+│               "c[i] = a[i] + b[i]"      │
+│          "}"                            │
+│                                         │
+│ 2. Generate Rust/Assembly code         │
+│    emit_rust_code(vector_add())        │
+│                                         │
+│ 3. Compile to native binary            │
+│    cargo build → .so files             │
+└─────────────────────────────────────────┘
+          ↓
+RUNTIME (NO Python!):
+┌─────────────────────────────────────────┐
+│ 4. Load pre-compiled binary            │
+│    kernel = load_kernel("vector_add.so")│
+│                                         │
+│ 5. Execute native code directly        │
+│    kernel.execute(a, b, c, n)         │
+│    // Pure assembly instructions        │
+└─────────────────────────────────────────┘
+```
+
+**Example Implementation:**
+
+```python
+# crates/hologram-kernels/build.py
+
+class KernelGenerator:
+    def generate_vector_add(self, class_a: int, class_b: int, class_c: int) -> str:
+        """Generate optimized Rust kernel code"""
+        return f"""
+// Auto-generated - DO NOT EDIT
+#[no_mangle]
+pub extern "C" fn vector_add_kernel(
+    a: *const f32,
+    b: *const f32,
+    c: *mut f32,
+    n: usize,
+) {{
+    // SIMD-optimized with class indices as compile-time constants
+    #[cfg(target_arch = "x86_64")]
+    unsafe {{
+        use std::arch::x86_64::*;
+        let simd_end = n / 8;
+        for i in 0..simd_end {{
+            let a_vec = _mm512_loadu_ps(a.add(i * 8));
+            let b_vec = _mm512_loadu_ps(b.add(i * 8));
+            let c_vec = _mm512_add_ps(a_vec, b_vec);
+            _mm512_storeu_ps(c.add(i * 8), c_vec);
+        }}
+    }}
+
+    // Remainder loop
+    for i in (n / 8) * 8..n {{
+        unsafe {{
+            *c.add(i) = *a.add(i) + *b.add(i);
+        }}
+    }}
+}}
+"""
+
+    def emit_all_kernels(self):
+        """Generate all kernel source files"""
+        kernels = [
+            ("vector_add", self.generate_vector_add(42, 17, 59)),
+            ("vector_mul", self.generate_vector_mul(42, 17, 59)),
+            ("gemm_f32", self.generate_gemm(1024, 1024, 1024)),
+            # ... all kernel definitions
+        ]
+
+        for name, code in kernels:
+            write_file(f"kernels/{name}.rs", code)
+
+if __name__ == "__main__":
+    KernelGenerator().emit_all_kernels()
+```
+
+**Integration with Build System:**
+
+```toml
+# Cargo.toml
+[build-dependencies]
+kernel-gen = { path = "build" }
+
+[build]
+# Run kernel generation before compilation
+```
+
+```rust
+// build.rs
+fn main() {
+    std::process::Command::new("python3")
+        .arg("build.py")
+        .status()
+        .expect("Failed to generate kernels");
+
+    println!("cargo:rerun-if-changed=build.py");
+}
+```
+
+---
+
+## Compilation and Kernel System
+
+### Compile-Time Kernel Execution (REQUIRED)
+
+```rust
+// 1. High-level operation
+let result = ops::math::vector_add(&exec, &a, &b, &mut c, 1024)?;
+
+// 2. Kernel dispatch (compile-time)
+// Class indices determined at compile time via geometric fold
+const CLASS_A: u8 = 42;  // COMPILE-TIME constant!
+const CLASS_B: u8 = 17;  // COMPILE-TIME constant!
+const CLASS_C: u8 = geometric_fold(42, 17);  // = 59 (COMPILE-TIME!)
+
+// 3. Load pre-compiled binary kernel
+let kernel = get_kernel("vector_add_f32")?;  // Loads .so file once
+
+// 4. Execute native code (ZERO interpretation!)
+execute_kernel(kernel, &[
+    a.handle(),
+    b.handle(),
+    c.handle(),
+])?;
+// - Direct native ISA execution
+// - No string parsing
+// - No AST construction
+// - No runtime switching
+
+// 5. Results available in buffer c
+let results = c.to_vec(&exec)?;
+```
+
+**Note**: Runtime string compilation is **DEPRECATED**. All operations use compile-time kernel generation.
+
+### Kernel Loading (REQUIRED Architecture)
+
+**Goal:** Pre-compile ALL operations to binary kernels for zero-interpretation execution.
+
+**REQUIRED structure:**
+
+```rust
+// kernels/ directory contains:
+vector_add.so      // Pre-compiled binary kernel
+vector_mul.so      // Loaded at startup via dlopen/dyld
+gemm_f32.so        // Direct native code execution
+reduce_sum.so      // ZERO interpretation overhead
+```
+
+**CRITICAL CONSTRAINT**: NO runtime string parsing, NO circuit compilation at runtime. All operations MUST use pre-compiled binary kernels loaded as libraries.
+
+**Geometric Folding Principle:** All data takes on geometric forms that fold onto operations with at most 2-3 prime factorizations. Class indices are compile-time constants, enabling optimal cache layout and SIMD alignment.
+
+---
+
+## Current Implementation Status
+
+**Completed layers:**
+
+- ✅ **atlas-core**: R96 classification, UOR primitives, resonance system
+- ✅ **hologram-core**: High-level operations (math, reduce, activation, loss, linalg, memory)
+- ✅ **hologram-ffi**: UniFFI framework and FFI bindings
+- ✅ **CPU Backend**: ISA execution pipeline (validate → execute → synchronize)
+- ✅ **Executor**: AtlasSpace state management
+
+**CRITICAL - In progress (BLOCKER):**
+
+- 🚨 **Kernel compilation system**: Compile-time generation of binary kernels (.so files)
+- 🚨 **Eliminate runtime parsing**: All operations must use pre-compiled kernels
+- 🚨 **Geometric folding implementation**: Class indices as compile-time constants
+- 🚨 **Kernel loader**: dlopen-based library loading at startup
+
+**Planned (future):**
+
+- 🔄 **GPU Backend**: CUDA/Metal implementation with thread block = class mapping
+- 🔄 **Quantum Backend**: Circuit compilation to quantum gates (qubit = class mapping)
+- 🔄 **Analog Backend**: Memristor array implementation
+
+**Archived/deprecated:**
+
+- 📦 **runtime parsing**: String-to-circuit compilation (REPLACED by compile-time kernels)
+- 📦 **atlas-isa**: ISA specification crate (deprecated)
+- 📦 **atlas-runtime**: Runtime state management (merged into executor)
+
+---
+
+## Summary: What Makes This System Unique
+
+### Core Architectural Principles
+
+1. **Zero-Interpretation Mandate**: NO runtime string parsing, NO circuit compilation at runtime, NO GeneratorCall enum interpretation. All operations pre-compiled to native binary kernels.
+
+2. **Geometric Folding**: All data takes on geometric forms that fold onto operations with at most 2-3 prime factorizations. Class indices are COMPILE-TIME constants.
+
+3. **Cache-Resident Design**: 96-class boundary pool (1.18 MB) fits in L2 cache, enabling zero bus traffic for all operations.
+
+4. **Topology-Aware Execution**: Data structure determines computation layout - automatic SIMD alignment and cache-optimal memory access patterns.
+
+5. **Kernel Generation at Build Time**: Python/Rust used to define kernels → generate native code → compile to .so files → load at startup via dlopen().
+
+6. **Universal Backend Abstraction**: CPU, GPU, quantum, and analog backends implement same kernel interface.
+
+### Critical Implementation Requirements
+
+**REQUIRED:**
+
+- ✅ Compile-time kernel generation (Python → Rust/Assembly)
+- ✅ Binary kernel libraries (.so/.dylib) loaded at startup
+- ✅ Class indices as compile-time constants
+- ✅ Direct native code execution (zero interpretation)
+- ✅ Geometric folding with 2-3 prime factorization constraint
+
+**FORBIDDEN:**
+
+- ❌ Runtime string parsing (CircuitCompiler::compile())
+- ❌ GeneratorCall enum match statements at runtime
+- ❌ AST construction at runtime
+- ❌ Runtime canonicalization
+- ❌ Python interpreter at runtime
+
+### System Architecture Summary
+
+```
+Data → Classify (R96) → Geometric Fold → Compile-Time Kernels → Native Code → Direct Execution
+
+256 bytes → 96 classes → 2-3 prime factorization → .so files → dlopen() → Assembly
+```
+
+**Core insight:** Minimal latency = Cache-resident topology + Compile-time kernel generation + Zero runtime interpretation overhead.
