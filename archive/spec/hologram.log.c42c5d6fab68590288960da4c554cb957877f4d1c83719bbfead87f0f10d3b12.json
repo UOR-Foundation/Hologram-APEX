@@ -1,0 +1,33 @@
+{
+  "namespace": "hologram.log.dependency",
+  "parent": "hologram.log",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Dependency conformance for hologram.log",
+  "dependency": {
+    "required": [
+      {
+        "namespace": "hologram.spec",
+        "version": ">=0.1.0",
+        "type": "conformance",
+        "reason": "Base schema for validation"
+      }
+    ],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  },
+  "dependencies": {
+    "required": [
+      {
+        "namespace": "hologram.spec",
+        "version": ">=0.1.0",
+        "type": "conformance",
+        "reason": "Base schema for validation"
+      }
+    ],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  }
+}

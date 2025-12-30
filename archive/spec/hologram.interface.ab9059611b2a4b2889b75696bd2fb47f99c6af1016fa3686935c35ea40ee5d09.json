@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.interface.docs",
+  "parent": "hologram.interface",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for interface conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Interface conformance documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "Interface conformance ensures components expose proper methods"
+      },
+      {
+        "title": "Usage",
+        "content": "Define methods with descriptions, inputs, outputs, and errors"
+      }
+    ]
+  }
+}

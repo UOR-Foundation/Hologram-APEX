@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.index.interface",
+  "parent": "hologram.index",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for working with component indexes",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Interface for working with component indexes",
+    "methods": {
+      "validate": {
+        "description": "Validate an index structure"
+      },
+      "getArtifact": {
+        "description": "Get content address for an artifact role"
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "namespace": "hologram.dependency.docs",
+  "parent": "hologram.dependency",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for dependency conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Comprehensive documentation for dependency management",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The dependency conformance defines how Hologram components declare and manage their dependencies. This includes required, optional, and development dependencies, as well as conflict detection."
+      },
+      {
+        "title": "Dependency Types",
+        "content": "Dependencies are categorized as: 'conformance' (required for structure validation), 'runtime' (required during execution), and 'build' (required during compilation/packaging)."
+      },
+      {
+        "title": "Version Constraints",
+        "content": "Version constraints follow semantic versioning patterns: >=1.0.0 (minimum version), ^2.1.0 (compatible versions), ~1.2.3 (patch updates only), 1.2.3 (exact version)."
+      },
+      {
+        "title": "Conflict Resolution",
+        "content": "Components can declare conflicts with other components to prevent incompatible combinations from being installed together."
+      },
+      {
+        "title": "Usage Example",
+        "content": "To declare dependencies, create a {namespace}.dependency.json file with required, optional, and development dependency arrays."
+      }
+    ]
+  }
+}

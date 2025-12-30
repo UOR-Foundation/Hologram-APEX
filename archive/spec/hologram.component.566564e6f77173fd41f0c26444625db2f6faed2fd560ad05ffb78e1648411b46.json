@@ -1,0 +1,25 @@
+{
+  "namespace": "hologram.component.test",
+  "parent": "hologram.component",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Test specifications for the Hologram component model",
+  "test": {
+    "version": "0.1.0",
+    "description": "Component model tests",
+    "tests": [
+      {
+        "name": "validate_conformance_requirements",
+        "description": "Ensure all conformance is present"
+      },
+      {
+        "name": "validate_schema_references",
+        "description": "Ensure schema references are valid"
+      },
+      {
+        "name": "validate_artifacts",
+        "description": "Ensure artifact CIDs are valid"
+      }
+    ]
+  }
+}

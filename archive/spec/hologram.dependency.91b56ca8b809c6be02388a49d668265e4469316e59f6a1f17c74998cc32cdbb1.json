@@ -1,0 +1,43 @@
+{
+  "namespace": "hologram.dependency.test",
+  "parent": "hologram.dependency",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Test specifications for dependency conformance",
+  "test": {
+    "version": "0.1.0",
+    "description": "Test cases for dependency management",
+    "tests": [
+      {
+        "name": "Required dependencies are validated",
+        "type": "unit",
+        "description": "Verify that required dependencies are properly validated"
+      },
+      {
+        "name": "Version constraints are enforced",
+        "type": "unit",
+        "description": "Verify semantic versioning constraints work correctly"
+      },
+      {
+        "name": "Circular dependencies are detected",
+        "type": "integration",
+        "description": "Verify circular dependency detection works"
+      },
+      {
+        "name": "Conflicts are properly identified",
+        "type": "integration",
+        "description": "Verify conflicting dependencies are detected"
+      },
+      {
+        "name": "Optional dependencies can be excluded",
+        "type": "unit",
+        "description": "Verify optional dependencies can be excluded from resolution"
+      },
+      {
+        "name": "Development dependencies are isolated",
+        "type": "unit",
+        "description": "Verify development dependencies don't affect runtime"
+      }
+    ]
+  }
+}

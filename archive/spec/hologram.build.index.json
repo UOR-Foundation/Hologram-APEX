@@ -1,11 +1,13 @@
-	
-namespace	"hologram.build"
-artifacts	
-spec	"hologram.build.558b2d5b30c4657e051e0d2851065ea8e69c910ad2cde22fdd8be1a956e617e3"
-interface	"hologram.build.8eda4c4b41c45c38ff228599f6ee6f6547e6625f44d40a75f8ea53322cd3e74c"
-docs	"hologram.build.ed1fe3bac2a43ba92d19d1dbe0bbdf712590ae9b894a95397d94a8e673a617ef"
-test	"hologram.build.c3d73997fc47ef0716270a99834edae3ac8423bdaa64071ed928f678a14476ab"
-manager	"hologram.build.de4227ca5ced0565ea577685e3e35c239620bade07f166ea41f87c192116643c"
-dependency	"hologram.build.d96ca0832080e05ccee9c5e3f0237c5424f314164978f7ae370e32414bc8dd7d"
-build	"hologram.build.9ad1861172744caa3d3ad2cca95643941bba3a7c495591727c821812bf8b58a7"
-log	"hologram.build.70e86bd1fad0ddddb5124fb2d05619b852e9e126ee6794c25450cd131effd868"
+{
+  "namespace": "hologram.build",
+  "artifacts": {
+    "spec": "hologram.build.558b2d5b30c4657e051e0d2851065ea8e69c910ad2cde22fdd8be1a956e617e3",
+    "interface": "hologram.build.8eda4c4b41c45c38ff228599f6ee6f6547e6625f44d40a75f8ea53322cd3e74c",
+    "docs": "hologram.build.ed1fe3bac2a43ba92d19d1dbe0bbdf712590ae9b894a95397d94a8e673a617ef",
+    "test": "hologram.build.c3d73997fc47ef0716270a99834edae3ac8423bdaa64071ed928f678a14476ab",
+    "manager": "hologram.build.de4227ca5ced0565ea577685e3e35c239620bade07f166ea41f87c192116643c",
+    "dependency": "hologram.build.d96ca0832080e05ccee9c5e3f0237c5424f314164978f7ae370e32414bc8dd7d",
+    "build": "hologram.build.9ad1861172744caa3d3ad2cca95643941bba3a7c495591727c821812bf8b58a7",
+    "log": "hologram.build.70e86bd1fad0ddddb5124fb2d05619b852e9e126ee6794c25450cd131effd868"
+  }
+}

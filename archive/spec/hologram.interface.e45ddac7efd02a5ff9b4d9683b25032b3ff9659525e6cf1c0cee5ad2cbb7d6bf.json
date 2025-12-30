@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.interface.manager",
+  "parent": "hologram.interface",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for interface conformance",
+  "manages": "hologram.interface",
+  "operations": {
+    "validate": {
+      "description": "Validate interface conformance"
+    },
+    "create": {
+      "description": "Create interface definition",
+      "artifact_submission": {
+        "description": "Submit interface artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit interface manifest"
+      }
+    },
+    "read": {
+      "description": "Read interface definition"
+    },
+    "update": {
+      "description": "Update interface definition"
+    },
+    "delete": {
+      "description": "Delete interface definition"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Interface lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create interface"
+      },
+      "read": {
+        "description": "Read interface"
+      },
+      "update": {
+        "description": "Update interface"
+      },
+      "delete": {
+        "description": "Delete interface"
+      },
+      "validate": {
+        "description": "Validate interface"
+      }
+    }
+  }
+}

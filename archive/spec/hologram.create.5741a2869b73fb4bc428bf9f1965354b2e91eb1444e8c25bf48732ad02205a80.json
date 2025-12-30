@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.create.docs",
+  "parent": "hologram.create",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for create operation",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Create operation documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The create operation enables atomic creation of components"
+      },
+      {
+        "title": "Two-phase Process",
+        "content": "First submit artifacts, then submit manifest"
+      }
+    ]
+  }
+}

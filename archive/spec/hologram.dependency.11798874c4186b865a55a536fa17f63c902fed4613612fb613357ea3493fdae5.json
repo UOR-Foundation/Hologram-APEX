@@ -1,0 +1,34 @@
+{
+  "namespace": "hologram.dependency.build",
+  "parent": "hologram.dependency",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Build conformance for hologram.dependency",
+  "build": {
+    "type": "script",
+    "steps": [
+      {
+        "name": "validate",
+        "command": "ajv-cli validate -s spec/hologram.dependency.*.json -d spec/hologram.dependency.*.json"
+      }
+    ],
+    "artifacts": {
+      "schemas": [
+        "hologram.dependency.schema"
+      ],
+      "binaries": [],
+      "libraries": [],
+      "documentation": [
+        "hologram.dependency.docs"
+      ]
+    },
+    "requirements": {
+      "tools": [
+        {
+          "name": "ajv-cli",
+          "version": ">=5.0.0"
+        }
+      ]
+    }
+  }
+}

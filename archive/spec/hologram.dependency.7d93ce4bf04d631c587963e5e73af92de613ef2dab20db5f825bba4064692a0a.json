@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.dependency.manager",
+  "parent": "hologram.dependency",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for dependency conformance",
+  "manages": "hologram.dependency",
+  "operations": {
+    "create": {
+      "description": "Create dependency declaration",
+      "artifact_submission": {
+        "description": "Submit dependency artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit dependency manifest"
+      }
+    },
+    "read": {
+      "description": "Read dependency declarations"
+    },
+    "update": {
+      "description": "Update dependency declarations"
+    },
+    "delete": {
+      "description": "Delete dependency declarations"
+    },
+    "validate": {
+      "description": "Validate dependency graph"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Manager operations for dependency component",
+    "operations": {
+      "create": {
+        "description": "Initialize dependency declaration"
+      },
+      "read": {
+        "description": "Read dependency information"
+      },
+      "update": {
+        "description": "Update dependency constraints"
+      },
+      "delete": {
+        "description": "Remove dependency declaration"
+      },
+      "validate": {
+        "description": "Validate dependency graph has no conflicts"
+      }
+    }
+  }
+}

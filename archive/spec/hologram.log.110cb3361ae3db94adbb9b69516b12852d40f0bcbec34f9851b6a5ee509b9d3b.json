@@ -1,0 +1,151 @@
+{
+  "namespace": "hologram.log.interface",
+  "parent": "hologram.log",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface conformance for log component",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Logging interface",
+    "methods": {
+      "log": {
+        "description": "Write a log entry",
+        "parameters": [
+          {
+            "name": "level",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "message",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "context",
+            "type": "object",
+            "required": false
+          }
+        ],
+        "returns": "void"
+      },
+      "debug": {
+        "description": "Write debug log",
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "context",
+            "type": "object",
+            "required": false
+          }
+        ],
+        "returns": "void"
+      },
+      "info": {
+        "description": "Write info log",
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "context",
+            "type": "object",
+            "required": false
+          }
+        ],
+        "returns": "void"
+      },
+      "warn": {
+        "description": "Write warning log",
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "context",
+            "type": "object",
+            "required": false
+          }
+        ],
+        "returns": "void"
+      },
+      "error": {
+        "description": "Write error log",
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "error",
+            "type": "Error",
+            "required": false
+          },
+          {
+            "name": "context",
+            "type": "object",
+            "required": false
+          }
+        ],
+        "returns": "void"
+      },
+      "fatal": {
+        "description": "Write fatal log",
+        "parameters": [
+          {
+            "name": "message",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "error",
+            "type": "Error",
+            "required": false
+          },
+          {
+            "name": "context",
+            "type": "object",
+            "required": false
+          }
+        ],
+        "returns": "void"
+      },
+      "setLevel": {
+        "description": "Set log level",
+        "parameters": [
+          {
+            "name": "level",
+            "type": "string",
+            "required": true
+          }
+        ],
+        "returns": "void"
+      },
+      "flush": {
+        "description": "Flush log buffer",
+        "parameters": [],
+        "returns": "Promise<void>"
+      }
+    },
+    "events": {
+      "logWritten": {
+        "description": "Emitted after log is written"
+      },
+      "bufferFull": {
+        "description": "Emitted when buffer is full"
+      },
+      "errorOccurred": {
+        "description": "Emitted on logging error"
+      }
+    }
+  }
+}

@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.log.spec",
+  "title": "Hologram Logging Interface",
+  "description": "Defines structured logging for components",
+  "type": "object",
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.log$"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+    },
+    "conformance": {
+      "type": "boolean"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "levels": {
+          "type": "array",
+          "description": "Supported log levels in order of severity",
+          "items": {
+            "type": "string",
+            "enum": [
+              "trace",
+              "debug",
+              "info",
+              "warn",
+              "error",
+              "fatal"
+            ]
+          },
+          "minItems": 1
+        },
+        "default_level": {
+          "type": "string",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "fatal"
+          ],
+          "description": "Default log level if not specified"
+        },
+        "format": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "json",
+                "text",
+                "structured"
+              ],
+              "description": "Log output format"
+            },
+            "timestamp": {
+              "type": "string",
+              "enum": [
+                "iso8601",
+                "unix",
+                "unix_ms"
+              ],
+              "description": "Timestamp format"
+            },
+            "fields": {
+              "type": "object",
+              "properties": {
+                "required": {
+                  "type": "array",
+                  "description": "Fields that must be present in every log entry",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "optional": {
+                  "type": "array",
+                  "description": "Fields that may be present in log entries",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "metadata": {
+                  "type": "object",
+                  "description": "Additional metadata fields",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "required"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "timestamp",
+            "fields"
+          ]
+        },
+        "output": {
+          "type": "array",
+          "description": "Log output destinations",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "stdout",
+                  "stderr",
+                  "file",
+                  "syslog",
+                  "network"
+                ]
+              },
+              "config": {
+                "type": "object",
+                "description": "Output-specific configuration"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
+        "filtering": {
+          "type": "object",
+          "description": "Log filtering rules",
+          "properties": {
+            "include": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "exclude": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "field": {
+                    "type": "string"
+                  },
+                  "pattern": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "sampling": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "description": "Context propagation",
+          "properties": {
+            "correlation_id": {
+              "type": "boolean",
+              "description": "Include correlation ID"
+            },
+            "trace_id": {
+              "type": "boolean",
+              "description": "Include trace ID"
+            },
+            "span_id": {
+              "type": "boolean",
+              "description": "Include span ID"
+            },
+            "parent_span_id": {
+              "type": "boolean",
+              "description": "Include parent span ID"
+            }
+          }
+        },
+        "performance": {
+          "type": "object",
+          "description": "Performance settings",
+          "properties": {
+            "async": {
+              "type": "boolean",
+              "description": "Use async logging"
+            },
+            "buffer_size": {
+              "type": "integer",
+              "description": "Log buffer size"
+            },
+            "flush_interval": {
+              "type": "integer",
+              "description": "Flush interval in milliseconds"
+            }
+          }
+        }
+      },
+      "required": [
+        "version",
+        "levels",
+        "format",
+        "output"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "log"
+  ]
+}

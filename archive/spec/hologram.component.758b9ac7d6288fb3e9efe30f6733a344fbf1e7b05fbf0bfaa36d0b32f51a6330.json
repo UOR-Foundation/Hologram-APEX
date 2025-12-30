@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.component.spec",
+  "title": "Hologram Component Model",
+  "description": "Defines what constitutes a complete Hologram component",
+  "type": "object",
+  "namespace": "hologram.component.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.3.0",
+  "conformance_requirements": {
+    "interface": {
+      "required": true,
+      "description": "Every component must define its public interface",
+      "schema": "hologram.interface.spec"
+    },
+    "docs": {
+      "required": true,
+      "description": "Every component must have documentation",
+      "schema": "hologram.docs.spec"
+    },
+    "test": {
+      "required": true,
+      "description": "Every component must have tests",
+      "schema": "hologram.test.spec"
+    },
+    "manager": {
+      "required": true,
+      "description": "Every component must define lifecycle management",
+      "schema": "hologram.manager.spec"
+    },
+    "dependency": {
+      "required": true,
+      "description": "Every component must declare its dependencies",
+      "schema": "hologram.dependency.spec"
+    },
+    "build": {
+      "required": true,
+      "description": "Every component must define build instructions",
+      "schema": "hologram.build.spec"
+    },
+    "log": {
+      "required": true,
+      "description": "Every component must define its logging interface",
+      "schema": "hologram.log.spec"
+    },
+    "view": {
+      "required": true,
+      "description": "Every component must define how it is visually presented",
+      "schema": "hologram.view.spec"
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "Component namespace"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "Parent namespace"
+    },
+    "conformance": {
+      "type": "boolean",
+      "description": "Whether this is a conformance file"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "namespace",
+    "conformance",
+    "version",
+    "description"
+  ]
+}

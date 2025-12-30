@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.component.interface",
+  "parent": "hologram.component",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface definition for the Hologram component model",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Component model interface",
+    "methods": {
+      "getRequirements": {
+        "description": "Get conformance requirements for components"
+      },
+      "validateComponent": {
+        "description": "Validate a component against the model"
+      }
+    }
+  }
+}

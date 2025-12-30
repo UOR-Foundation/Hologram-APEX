@@ -1,0 +1,13 @@
+{
+  "namespace": "hologram",
+  "artifacts": {
+    "spec": "hologram.62dd6f8ae06cf0a6352784a0bb9965242fe4489df28c0fcfe42df494bb839ab9",
+    "docs": "hologram.a84d58682bb2039b977fc4d1c04d38bf3ac11472bba893f67f8b2287d079dbac",
+    "test": "hologram.7935ef5ee5313c0dfaa79b1845712b0fb7f0d0306e812858cf1f48313cc49b09",
+    "manager": "hologram.9beb988ed603e9c98023dc562c98942c973cc2be1629edf7cc22c73bdd45fdc2",
+    "interface": "hologram.4853f1a1af49b26e957ef3d1474c02f47b1265a665cbf412d5e590446c4a69e4",
+    "dependency": "hologram.91d4640cc01db7f08684df9b67d05258b2434c3584b134a4fe9f1f0cbe0e9d10",
+    "build": "hologram.9acabff4c0609d2d34a3b06873a5f62c74313563add21d09d3770135f33940d1",
+    "log": "hologram.560dbfe122279d23d693136cb3007b1e0e4599a6057bfb4c9be60f3f74746c20"
+  }
+}

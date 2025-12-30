@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.interface.test",
+  "parent": "hologram.interface",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for interface conformance",
+  "test": {
+    "version": "0.1.0",
+    "description": "Interface conformance tests",
+    "tests": [
+      {
+        "name": "validate_method_structure",
+        "description": "Ensure methods have proper structure"
+      },
+      {
+        "name": "validate_error_handling",
+        "description": "Ensure error definitions are valid"
+      }
+    ]
+  }
+}

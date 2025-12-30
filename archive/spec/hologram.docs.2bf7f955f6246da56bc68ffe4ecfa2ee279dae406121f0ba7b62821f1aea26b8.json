@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.docs.interface",
+  "parent": "hologram.docs",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for documentation conformance",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for documentation management",
+    "methods": {
+      "getSections": {
+        "description": "Get documentation sections"
+      },
+      "render": {
+        "description": "Render documentation"
+      }
+    }
+  }
+}

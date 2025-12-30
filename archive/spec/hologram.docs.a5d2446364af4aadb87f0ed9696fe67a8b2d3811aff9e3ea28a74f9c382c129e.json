@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.docs.docs",
+  "parent": "hologram.docs",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for documentation conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Documentation conformance documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "Documentation conformance ensures all components have proper documentation"
+      },
+      {
+        "title": "Structure",
+        "content": "Documentation is structured as sections with titles and content"
+      }
+    ]
+  }
+}

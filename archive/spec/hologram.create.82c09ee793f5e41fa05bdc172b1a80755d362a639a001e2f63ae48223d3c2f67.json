@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.create.spec",
+  "title": "Hologram Create Operation",
+  "description": "Defines create operation for components",
+  "type": "object",
+  "namespace": "hologram.create.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.1.0",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "const": "hologram.create"
+    },
+    "parent": {
+      "type": "string",
+      "const": "hologram"
+    },
+    "conformance": {
+      "type": "boolean"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "create": {
+      "type": "object",
+      "properties": {
+        "artifact_submission": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "type": "object"
+                },
+                "type": {
+                  "enum": [
+                    "spec",
+                    "implementation",
+                    "conformance"
+                  ]
+                }
+              },
+              "required": [
+                "content",
+                "type"
+              ]
+            },
+            "output": {
+              "type": "object",
+              "properties": {
+                "cid": {
+                  "type": "string"
+                },
+                "validated": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "cid",
+                "validated"
+              ]
+            }
+          }
+        },
+        "manifest_submission": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "object",
+              "properties": {
+                "namespace": {
+                  "type": "string"
+                },
+                "artifacts": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "namespace",
+                "artifacts"
+              ]
+            },
+            "output": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "component": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "success"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "artifact_submission",
+        "manifest_submission"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "version",
+    "description",
+    "create"
+  ]
+}

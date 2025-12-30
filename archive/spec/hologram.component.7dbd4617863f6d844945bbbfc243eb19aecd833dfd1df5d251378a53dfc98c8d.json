@@ -1,0 +1,33 @@
+{
+  "namespace": "hologram.component.docs",
+  "parent": "hologram.component",
+  "conformance": true,
+  "version": "0.2.0",
+  "description": "Documentation for the Hologram component model",
+  "docs": {
+    "version": "0.2.0",
+    "description": "Component model documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The Hologram component model defines the complete structure of all components. Every component is composed of exactly 9 files: 1 specification, 1 implementation, and 7 conformance files."
+      },
+      {
+        "title": "Core Requirements",
+        "content": "Every component must have: spec (JSON Schema definition), implementation (the actual component), interface (public API), docs (documentation), test (test specifications), and manager (lifecycle management)."
+      },
+      {
+        "title": "Extended Requirements",
+        "content": "Additionally, every component must have: dependency (dependency declarations), build (build instructions), and log (logging interface). These ensure complete lifecycle management from development through production."
+      },
+      {
+        "title": "Validation",
+        "content": "Components are validated against their schemas with strict enforcement. All 9 files must be present and valid for a component to be considered complete."
+      },
+      {
+        "title": "Content Addressing",
+        "content": "All component files are content-addressed using SHA256 hashes, ensuring integrity and enabling deterministic references."
+      }
+    ]
+  }
+}

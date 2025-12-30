@@ -1,0 +1,48 @@
+{
+  "namespace": "hologram.log.test",
+  "parent": "hologram.log",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Test specifications for log conformance",
+  "test": {
+    "version": "0.1.0",
+    "description": "Test cases for logging system",
+    "tests": [
+      {
+        "name": "Log levels filter correctly",
+        "type": "unit",
+        "description": "Verify logs below threshold are filtered"
+      },
+      {
+        "name": "Required fields are present",
+        "type": "unit",
+        "description": "Verify all required fields appear in log entries"
+      },
+      {
+        "name": "Context propagates correctly",
+        "type": "integration",
+        "description": "Verify correlation and trace IDs propagate"
+      },
+      {
+        "name": "Async logging performs well",
+        "type": "performance",
+        "description": "Verify async logging doesn't block"
+      },
+      {
+        "name": "Buffer flushes on interval",
+        "type": "unit",
+        "description": "Verify buffer flushes periodically"
+      },
+      {
+        "name": "Log rotation works",
+        "type": "integration",
+        "description": "Verify log files rotate at max size"
+      },
+      {
+        "name": "Sampling reduces volume",
+        "type": "unit",
+        "description": "Verify sampling reduces log volume correctly"
+      }
+    ]
+  }
+}

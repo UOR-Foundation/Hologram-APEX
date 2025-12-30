@@ -1,0 +1,67 @@
+{
+  "namespace": "hologram.dependency.interface",
+  "parent": "hologram.dependency",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface conformance for dependency component",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Dependency management interface",
+    "methods": {
+      "resolveDependencies": {
+        "description": "Resolve all dependencies for a component",
+        "parameters": [
+          {
+            "name": "namespace",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "includeOptional",
+            "type": "boolean",
+            "required": false
+          }
+        ],
+        "returns": "DependencyGraph"
+      },
+      "checkConflicts": {
+        "description": "Check for dependency conflicts",
+        "parameters": [
+          {
+            "name": "dependencies",
+            "type": "array",
+            "required": true
+          }
+        ],
+        "returns": "ConflictReport"
+      },
+      "validateVersionConstraints": {
+        "description": "Validate version constraints are satisfiable",
+        "parameters": [
+          {
+            "name": "constraint",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "version",
+            "type": "string",
+            "required": true
+          }
+        ],
+        "returns": "boolean"
+      }
+    },
+    "events": {
+      "dependencyAdded": {
+        "description": "Emitted when a new dependency is added"
+      },
+      "dependencyRemoved": {
+        "description": "Emitted when a dependency is removed"
+      },
+      "conflictDetected": {
+        "description": "Emitted when a conflict is detected"
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "namespace": "hologram.index.test",
+  "parent": "hologram.index",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for hologram.index validation",
+  "test": {
+    "version": "0.1.0",
+    "description": "Tests for hologram.index validation",
+    "tests": [
+      {
+        "name": "valid_index_structure",
+        "description": "Verify index has required namespace and artifacts fields"
+      },
+      {
+        "name": "artifact_hash_format",
+        "description": "Verify artifact references are valid SHA256 hashes"
+      },
+      {
+        "name": "namespace_format",
+        "description": "Verify namespace follows hologram naming convention"
+      }
+    ]
+  }
+}

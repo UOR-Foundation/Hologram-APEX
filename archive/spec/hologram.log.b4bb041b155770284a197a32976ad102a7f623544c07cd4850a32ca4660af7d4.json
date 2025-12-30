@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.log.manager",
+  "parent": "hologram.log",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for log conformance",
+  "manages": "hologram.log",
+  "operations": {
+    "create": {
+      "description": "Create log configuration",
+      "artifact_submission": {
+        "description": "Submit log artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit log manifest"
+      }
+    },
+    "read": {
+      "description": "Read log configuration"
+    },
+    "update": {
+      "description": "Update log configuration"
+    },
+    "delete": {
+      "description": "Delete log configuration"
+    },
+    "validate": {
+      "description": "Validate log configuration"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Manager operations for log component",
+    "operations": {
+      "create": {
+        "description": "Initialize log configuration"
+      },
+      "read": {
+        "description": "Read logging settings"
+      },
+      "update": {
+        "description": "Update log levels or outputs"
+      },
+      "delete": {
+        "description": "Remove log configuration"
+      },
+      "validate": {
+        "description": "Validate log configuration is valid"
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "namespace": "hologram.index.dependency",
+  "parent": "hologram.index",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Dependency conformance for hologram.index",
+  "dependency": {
+    "required": [
+      {
+        "namespace": "hologram.spec",
+        "version": ">=0.1.0",
+        "type": "conformance",
+        "reason": "Base schema for validation"
+      }
+    ],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  },
+  "dependencies": {
+    "required": [
+      {
+        "namespace": "hologram.spec",
+        "version": ">=0.1.0",
+        "type": "conformance",
+        "reason": "Base schema for validation"
+      }
+    ],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  }
+}

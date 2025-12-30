@@ -1,0 +1,61 @@
+{
+  "namespace": "hologram.index.manager",
+  "parent": "hologram.index",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for hologram.index",
+  "manages": "hologram.index",
+  "operations": {
+    "validate": {
+      "description": "Validate index structure and references"
+    },
+    "create": {
+      "description": "Create a new component index",
+      "artifact_submission": {
+        "description": "Submit index artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit index manifest"
+      }
+    },
+    "read": {
+      "description": "Read component index"
+    },
+    "update": {
+      "description": "Update artifact references in an index"
+    },
+    "delete": {
+      "description": "Delete component index"
+    }
+  },
+  "storage": {
+    "type": "filesystem",
+    "artifact_path": "./spec"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Index lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create index"
+      },
+      "read": {
+        "description": "Read index"
+      },
+      "update": {
+        "description": "Update index"
+      },
+      "delete": {
+        "description": "Delete index"
+      },
+      "validate": {
+        "description": "Validate index"
+      }
+    }
+  }
+}

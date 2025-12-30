@@ -1,0 +1,25 @@
+{
+  "namespace": "hologram.index.docs",
+  "parent": "hologram.index",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for the Hologram index system",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Documentation for the Hologram index system",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The hologram.index component defines the structure for component indexes that map artifact roles to content-addressed storage."
+      },
+      {
+        "title": "Artifacts",
+        "content": "Artifacts are content-addressed references to component definitions. Each artifact is identified by its SHA256 hash, making it immutable and verifiable."
+      },
+      {
+        "title": "Usage",
+        "content": "Every Hologram component has an index file that maps standard roles (spec, implementation, interface, docs, test, manager) to their content addresses."
+      }
+    ]
+  }
+}

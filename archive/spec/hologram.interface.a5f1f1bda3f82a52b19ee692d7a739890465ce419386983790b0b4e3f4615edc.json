@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.interface.interface",
+  "parent": "hologram.interface",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for interface conformance",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for interface validation",
+    "methods": {
+      "validate": {
+        "description": "Validate interface conformance"
+      },
+      "getMethods": {
+        "description": "Get available methods"
+      }
+    }
+  }
+}

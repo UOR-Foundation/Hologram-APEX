@@ -1,0 +1,33 @@
+{
+  "namespace": "hologram.build.docs",
+  "parent": "hologram.build",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for build conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Comprehensive documentation for build system",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The build conformance defines how Hologram components are compiled, tested, and packaged. It supports multiple build systems and provides a consistent interface for build operations."
+      },
+      {
+        "title": "Build Types",
+        "content": "Supported build types include: docker (containerized builds), make (Makefile-based), npm (Node.js), cargo (Rust), go (Go modules), gradle/maven (Java), and script (custom scripts)."
+      },
+      {
+        "title": "Build Steps",
+        "content": "Build steps are executed sequentially. Each step has a name, command, optional working directory, environment variables, and conditional execution rules."
+      },
+      {
+        "title": "Artifacts",
+        "content": "Build artifacts are categorized as binaries (executables), libraries (shared/static libs), documentation (generated docs), and schemas (generated schemas). These are preserved after the build completes."
+      },
+      {
+        "title": "Caching",
+        "content": "Build caching can be enabled to speed up subsequent builds. Cache keys can include checksums of dependency files to ensure cache invalidation on changes."
+      }
+    ]
+  }
+}

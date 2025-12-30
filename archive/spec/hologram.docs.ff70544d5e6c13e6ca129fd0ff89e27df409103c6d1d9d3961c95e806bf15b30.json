@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.docs.test",
+  "parent": "hologram.docs",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for documentation conformance",
+  "test": {
+    "version": "0.1.0",
+    "description": "Documentation conformance tests",
+    "tests": [
+      {
+        "name": "validate_sections",
+        "description": "Ensure sections have title and content"
+      },
+      {
+        "name": "validate_completeness",
+        "description": "Ensure documentation is complete"
+      }
+    ]
+  }
+}

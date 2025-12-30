@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.docs.manager",
+  "parent": "hologram.docs",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for documentation conformance",
+  "manages": "hologram.docs",
+  "operations": {
+    "validate": {
+      "description": "Validate documentation conformance"
+    },
+    "create": {
+      "description": "Create documentation",
+      "artifact_submission": {
+        "description": "Submit documentation artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit documentation manifest"
+      }
+    },
+    "read": {
+      "description": "Read documentation"
+    },
+    "update": {
+      "description": "Update documentation"
+    },
+    "delete": {
+      "description": "Delete documentation"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Documentation lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create documentation"
+      },
+      "read": {
+        "description": "Read documentation"
+      },
+      "update": {
+        "description": "Update documentation"
+      },
+      "delete": {
+        "description": "Delete documentation"
+      },
+      "validate": {
+        "description": "Validate documentation"
+      }
+    }
+  }
+}

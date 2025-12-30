@@ -1,0 +1,14 @@
+{
+  "namespace": "hologram.component",
+  "artifacts": {
+    "spec": "hologram.component.758b9ac7d6288fb3e9efe30f6733a344fbf1e7b05fbf0bfaa36d0b32f51a6330",
+    "manager": "hologram.component.2050582aade7d09a1e4b1dfa124277dfb505c9f56c5e5358971028bf264a8669",
+    "test": "hologram.component.566564e6f77173fd41f0c26444625db2f6faed2fd560ad05ffb78e1648411b46",
+    "interface": "hologram.component.53c37f3ab6fe2e6c24e89070be951103587d6f9111ca2b5f03d0ec91e8901705",
+    "docs": "hologram.component.7dbd4617863f6d844945bbbfc243eb19aecd833dfd1df5d251378a53dfc98c8d",
+    "dependency": "hologram.component.e45f8c6a049c2961a4d6e4fc172e2c8d5afa5c73ebe748fd727b43d6dc909751",
+    "build": "hologram.component.5a692a56eefe3b6f076d7db28fb2f1f362faa632ae99241273d96a1943e18ab4",
+    "log": "hologram.component.1863b98dee069735bbdd5bea988de7d2b24c7333bf8327f3de7249cbeb7d30bd",
+    "view": "hologram.component.1bb6bb9794f2229fcabfb940b1b4e76e2ee620d4d1de61b732fbe122527647c4"
+  }
+}

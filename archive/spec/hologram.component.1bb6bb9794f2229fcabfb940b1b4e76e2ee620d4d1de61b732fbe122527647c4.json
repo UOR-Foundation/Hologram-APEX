@@ -1,0 +1,74 @@
+{
+  "namespace": "hologram.component.view",
+  "parent": "hologram.component",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "View conformance for component model",
+  "view": {
+    "conformance_type": "view",
+    "template": {
+      "layout": "component-detail",
+      "style": "comprehensive"
+    },
+    "sections": [
+      {
+        "id": "overview",
+        "title": "Component Model Overview",
+        "source": {
+          "type": "spec",
+          "field": "description",
+          "transform": "markdown"
+        }
+      },
+      {
+        "id": "requirements",
+        "title": "Conformance Requirements",
+        "source": {
+          "type": "spec",
+          "field": "conformance_requirements",
+          "transform": "table"
+        }
+      },
+      {
+        "id": "schema",
+        "title": "Component Schema",
+        "source": {
+          "type": "spec",
+          "field": "properties",
+          "transform": "json"
+        }
+      },
+      {
+        "id": "components",
+        "title": "Components Using This Model",
+        "source": {
+          "type": "computed",
+          "transform": "table"
+        }
+      }
+    ],
+    "rendering": {
+      "modes": {
+        "web": {
+          "enabled": true,
+          "framework": "static",
+          "features": [
+            "search",
+            "navigation",
+            "breadcrumbs",
+            "toc"
+          ]
+        },
+        "terminal": {
+          "enabled": true,
+          "format": "markdown"
+        }
+      }
+    },
+    "navigation": {
+      "breadcrumbs": true,
+      "siblings": true,
+      "children": true
+    }
+  }
+}

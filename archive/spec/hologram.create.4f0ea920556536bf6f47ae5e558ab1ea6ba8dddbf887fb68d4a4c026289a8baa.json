@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.create.interface",
+  "parent": "hologram.create",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for create operation",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for component creation",
+    "methods": {
+      "submitArtifact": {
+        "description": "Submit an artifact for validation"
+      },
+      "submitManifest": {
+        "description": "Submit a manifest to create component"
+      }
+    }
+  }
+}

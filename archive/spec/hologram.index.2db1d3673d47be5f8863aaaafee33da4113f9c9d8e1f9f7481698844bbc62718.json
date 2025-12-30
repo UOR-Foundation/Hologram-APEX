@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.index.spec",
+  "title": "Hologram Component Index",
+  "description": "Defines the structure of component indexes that map artifact roles to content addresses",
+  "type": "object",
+  "namespace": "hologram.index.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.1.0",
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "The namespace of the component this index describes"
+    },
+    "artifacts": {
+      "type": "object",
+      "description": "Maps artifact roles to content addresses",
+      "properties": {
+        "spec": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+          "description": "Content address of the specification"
+        },
+        "implementation": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+          "description": "Content address of the implementation"
+        },
+        "interface": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+          "description": "Content address of the interface conformance"
+        },
+        "docs": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+          "description": "Content address of the documentation conformance"
+        },
+        "test": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+          "description": "Content address of the test conformance"
+        },
+        "manager": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+          "description": "Content address of the manager conformance"
+        }
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.[a-f0-9]{64}$",
+        "description": "Content address for custom artifact types"
+      }
+    }
+  },
+  "required": [
+    "namespace",
+    "artifacts"
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.dependency.spec",
+  "title": "Hologram Dependency Declaration",
+  "description": "Defines how components declare and manage dependencies",
+  "type": "object",
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.dependency$"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+    },
+    "conformance": {
+      "type": "boolean"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "array",
+          "description": "Dependencies that must be present for the component to function",
+          "items": {
+            "type": "object",
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+              },
+              "version": {
+                "type": "string",
+                "description": "Semantic version constraint (e.g., >=1.0.0, ^2.1.0)"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "conformance",
+                  "runtime",
+                  "build"
+                ],
+                "description": "Type of dependency"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Why this dependency is required"
+              }
+            },
+            "required": [
+              "namespace",
+              "version",
+              "type"
+            ]
+          }
+        },
+        "optional": {
+          "type": "array",
+          "description": "Dependencies that enhance functionality but are not required",
+          "items": {
+            "type": "object",
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+              },
+              "version": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "conformance",
+                  "runtime",
+                  "build"
+                ]
+              },
+              "provides": {
+                "type": "string",
+                "description": "What functionality this optional dependency provides"
+              }
+            },
+            "required": [
+              "namespace",
+              "version",
+              "type",
+              "provides"
+            ]
+          }
+        },
+        "development": {
+          "type": "array",
+          "description": "Dependencies only needed during development",
+          "items": {
+            "type": "object",
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+              },
+              "version": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string",
+                "description": "Purpose of this development dependency"
+              }
+            },
+            "required": [
+              "namespace",
+              "version",
+              "purpose"
+            ]
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "description": "Components that conflict with this one",
+          "items": {
+            "type": "object",
+            "properties": {
+              "namespace": {
+                "type": "string",
+                "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+              },
+              "version": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Why these components conflict"
+              }
+            },
+            "required": [
+              "namespace",
+              "reason"
+            ]
+          }
+        }
+      },
+      "required": [
+        "required"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "dependencies"
+  ]
+}

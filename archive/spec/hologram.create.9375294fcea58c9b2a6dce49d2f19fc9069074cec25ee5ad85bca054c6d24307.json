@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.create.test",
+  "parent": "hologram.create",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for create operation",
+  "test": {
+    "version": "0.1.0",
+    "description": "Create operation tests",
+    "tests": [
+      {
+        "name": "test_artifact_validation",
+        "description": "Test artifact submission validation"
+      },
+      {
+        "name": "test_manifest_creation",
+        "description": "Test manifest-based component creation"
+      }
+    ]
+  }
+}

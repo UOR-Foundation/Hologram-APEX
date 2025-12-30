@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.component.manager",
+  "parent": "hologram.component",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for the Hologram component model",
+  "manages": "hologram.component",
+  "operations": {
+    "validate": {
+      "description": "Validate component model conformance"
+    },
+    "create": {
+      "description": "Create a new component following the model",
+      "artifact_submission": {
+        "description": "Submit artifacts for new component"
+      },
+      "manifest_submission": {
+        "description": "Submit manifest for new component"
+      }
+    },
+    "read": {
+      "description": "Read component model data"
+    },
+    "update": {
+      "description": "Update component to match model requirements"
+    },
+    "delete": {
+      "description": "Delete component with model validation"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Component model lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create new component model instance"
+      },
+      "read": {
+        "description": "Read component model configuration"
+      },
+      "update": {
+        "description": "Update component model"
+      },
+      "delete": {
+        "description": "Delete component model"
+      },
+      "validate": {
+        "description": "Validate component model structure"
+      }
+    }
+  }
+}

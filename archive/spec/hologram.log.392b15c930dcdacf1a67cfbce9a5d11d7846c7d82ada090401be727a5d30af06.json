@@ -1,0 +1,37 @@
+{
+  "namespace": "hologram.log.docs",
+  "parent": "hologram.log",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for log conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Comprehensive documentation for logging",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The log conformance provides structured logging for all Hologram components. It ensures consistent, parseable, and queryable log output across the entire system."
+      },
+      {
+        "title": "Log Levels",
+        "content": "Log levels in order of severity: trace (most verbose), debug (debugging info), info (general information), warn (warning conditions), error (error conditions), fatal (critical errors that cause termination)."
+      },
+      {
+        "title": "Structured Format",
+        "content": "Logs are output in JSON format with required fields (timestamp, level, namespace, message) and optional context fields (correlation_id, trace_id, etc.). This enables efficient parsing and querying."
+      },
+      {
+        "title": "Context Propagation",
+        "content": "Correlation IDs and trace IDs are propagated through the call chain, enabling distributed tracing and debugging across multiple components."
+      },
+      {
+        "title": "Performance",
+        "content": "Async logging with buffering minimizes performance impact. Logs are buffered and flushed periodically or when the buffer is full."
+      },
+      {
+        "title": "Filtering and Sampling",
+        "content": "Logs can be filtered by level or pattern, and sampled to reduce volume in high-traffic scenarios while maintaining visibility."
+      }
+    ]
+  }
+}
