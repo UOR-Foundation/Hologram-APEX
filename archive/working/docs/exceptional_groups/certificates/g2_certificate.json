@@ -1,0 +1,117 @@
+{
+  "structure": "G2",
+  "timestamp": "2025-10-06",
+  "unity_positions": [
+    0,
+    1,
+    48,
+    49,
+    256,
+    257,
+    304,
+    305,
+    512,
+    513,
+    560,
+    561
+  ],
+  "klein_quartet": [
+    0,
+    1,
+    48,
+    49
+  ],
+  "total_roots": 12,
+  "rank": 2,
+  "weyl_order": 12,
+  "cartan_matrix": [
+    [
+      2,
+      -3
+    ],
+    [
+      -1,
+      2
+    ]
+  ],
+  "simple_roots": {
+    "alpha1": [
+      1,
+      -1,
+      0
+    ],
+    "alpha2": [
+      -2,
+      1,
+      1
+    ]
+  },
+  "root_mapping": [
+    {
+      "unity_position": 0,
+      "root_label": "\u03b1\u2081 (short)"
+    },
+    {
+      "unity_position": 1,
+      "root_label": "\u03b1\u2082 (long)"
+    },
+    {
+      "unity_position": 48,
+      "root_label": "\u03b1\u2081+\u03b1\u2082 (short)"
+    },
+    {
+      "unity_position": 49,
+      "root_label": "2\u03b1\u2081+\u03b1\u2082 (long)"
+    },
+    {
+      "unity_position": 256,
+      "root_label": "3\u03b1\u2081+\u03b1\u2082 (short)"
+    },
+    {
+      "unity_position": 257,
+      "root_label": "3\u03b1\u2081+2\u03b1\u2082 (long)"
+    },
+    {
+      "unity_position": 304,
+      "root_label": "-\u03b1\u2081 (short)"
+    },
+    {
+      "unity_position": 305,
+      "root_label": "-\u03b1\u2082 (long)"
+    },
+    {
+      "unity_position": 512,
+      "root_label": "-(\u03b1\u2081+\u03b1\u2082) (short)"
+    },
+    {
+      "unity_position": 513,
+      "root_label": "-(2\u03b1\u2081+\u03b1\u2082) (long)"
+    },
+    {
+      "unity_position": 560,
+      "root_label": "-(3\u03b1\u2081+\u03b1\u2082) (short)"
+    },
+    {
+      "unity_position": 561,
+      "root_label": "-(3\u03b1\u2081+2\u03b1\u2082) (long)"
+    }
+  ],
+  "twelve_fold_divisibility": {
+    "atlas_total": 12288,
+    "atlas_vertices": 96,
+    "sign_classes": 48,
+    "pages": 48,
+    "unity_positions": 12,
+    "g2_roots": 12,
+    "window_multiple": 768
+  },
+  "properties": {
+    "dynkin_diagram": "o<\u2261\u2261\u2261o (triple bond)",
+    "long_roots": 6,
+    "short_roots": 6,
+    "length_ratio": "\u221a3:1",
+    "weyl_group": "D\u2086 (dihedral)",
+    "is_simply_laced": false,
+    "twelve_fold_verified": true
+  }
+}
