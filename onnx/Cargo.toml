@@ -1,0 +1,55 @@
+[workspace]
+members = [
+    "crates/compiler",
+    "crates/downloader",
+    "crates/onnx_converter",
+]
+exclude = [
+    "hologram",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Hologram Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/hologramapp/hologram"
+
+[package]
+name = "hologram-onnx"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ONNX toolchain for Hologram - compile and run ONNX models"
+
+[lib]
+name = "hologram_onnx"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hologram-onnx"
+path = "src/main.rs"
+
+[dependencies]
+hologram-onnx-compiler = { path = "crates/compiler" }
+hologram-onnx-downloader = { path = "crates/downloader" }
+hologram-onnx-converter = { path = "crates/onnx_converter" }
+hologram = { path = "hologram" }
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+dirs = "5.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1.39", features = ["full"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true

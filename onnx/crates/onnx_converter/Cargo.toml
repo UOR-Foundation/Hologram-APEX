@@ -1,0 +1,20 @@
+[package]
+name = "hologram-onnx-converter"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "PyTorch to ONNX converter with automatic Python environment management"
+
+[lib]
+name = "hologram_onnx_converter"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+tokio = { version = "1.39", features = ["process", "fs"] }
+dirs = "5.0"
+
+[dev-dependencies]
+tokio = { version = "1.39", features = ["full"] }
