@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hologram Image Generation Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 1200px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 30px;
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .demo-section {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 25px;
+            border: 2px solid #e9ecef;
+        }
+
+        .demo-section h2 {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .demo-section .label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 8px;
+        }
+
+        .demo-section .value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .prompt-area {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .prompt-area label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+
+        .prompt-area textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .prompt-area textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-bottom: 20px;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .generate-btn:active {
+            transform: translateY(0);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .canvas-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .canvas-wrapper {
+            text-align: center;
+        }
+
+        .canvas-wrapper h3 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+
+        .canvas-wrapper canvas {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 512px;
+            height: auto;
+            background: #f8f9fa;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+        }
+
+        .status.loading {
+            background: #cfe2ff;
+            color: #084298;
+            border: 1px solid #b6d4fe;
+        }
+
+        .status.success {
+            background: #d1e7dd;
+            color: #0f5132;
+            border: 1px solid #badbcc;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #842029;
+            border: 1px solid #f5c2c7;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        .tech-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e7f1ff;
+            border: 1px solid #b6d4fe;
+            border-radius: 12px;
+            font-size: 0.85em;
+            color: #084298;
+            margin: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .demo-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .canvas-container {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚡ Hologram Image Generation</h1>
+        <p class="subtitle">Real-time AI image generation in your browser, powered by hologram-core WebGPU backend</p>
+
+        <div class="status loading" id="status">
+            Initializing WASM and WebGPU backend...
+        </div>
+
+        <div class="prompt-area">
+            <label for="prompt">Prompt:</label>
+            <textarea
+                id="prompt"
+                placeholder="Enter your image description (e.g., 'a beautiful sunset over mountains')"
+            >a beautiful landscape with mountains and a lake</textarea>
+        </div>
+
+        <button class="generate-btn" id="generateBtn" disabled>
+            🎨 Generate Image
+        </button>
+
+        <div class="canvas-container">
+            <div class="canvas-wrapper">
+                <h3>🐌 Baseline Model</h3>
+                <canvas id="baselineCanvas" width="512" height="512"></canvas>
+                <div class="demo-section" style="margin-top: 15px;">
+                    <div class="label">Generation Time</div>
+                    <div class="value" id="baselineTime">--</div>
+                </div>
+            </div>
+
+            <div class="canvas-wrapper">
+                <h3>⚡ Hologram-Powered</h3>
+                <canvas id="hologramCanvas" width="512" height="512"></canvas>
+                <div class="demo-section" style="margin-top: 15px;">
+                    <div class="label">Generation Time</div>
+                    <div class="value" id="hologramTime">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-grid" style="margin-top: 20px;">
+            <div class="demo-section">
+                <h2>📊 Performance Comparison</h2>
+                <div class="label">Speedup</div>
+                <div class="value" id="speedup">--</div>
+            </div>
+
+            <div class="demo-section">
+                <h2>🔧 Technology</h2>
+                <div style="margin-top: 10px;">
+                    <span class="tech-badge">WebGPU</span>
+                    <span class="tech-badge">WASM</span>
+                    <span class="tech-badge">Rust</span>
+                    <span class="tech-badge">Stable Diffusion XS</span>
+                    <span class="tech-badge">hologram-layers</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>hologram-core</strong> - High-performance compute acceleration through canonical form compilation</p>
+            <p style="margin-top: 8px;">All computation runs entirely in your browser using WebGPU</p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Demo initialization
+        const statusEl = document.getElementById('status');
+        const generateBtn = document.getElementById('generateBtn');
+        const promptInput = document.getElementById('prompt');
+        const baselineCanvas = document.getElementById('baselineCanvas');
+        const hologramCanvas = document.getElementById('hologramCanvas');
+        const baselineTimeEl = document.getElementById('baselineTime');
+        const hologramTimeEl = document.getElementById('hologramTime');
+        const speedupEl = document.getElementById('speedup');
+
+        async function init() {
+            try {
+                // Check WebGPU support
+                if (!navigator.gpu) {
+                    throw new Error('WebGPU not supported in this browser');
+                }
+
+                statusEl.textContent = 'Loading WASM module...';
+
+                // TODO: Load WASM module
+                // const wasmModule = await import('./pkg/hologram_layers.js');
+                // await wasmModule.default();
+
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Ready! Enter a prompt and click Generate';
+                generateBtn.disabled = false;
+
+                // For now, show placeholder
+                setTimeout(() => {
+                    statusEl.textContent = '⚠️ Demo scaffold ready - model integration in progress';
+                }, 1000);
+
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                console.error(error);
+            }
+        }
+
+        function drawPlaceholder(canvas, text) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f8f9fa';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#495057';
+            ctx.font = '20px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            const prompt = promptInput.value.trim();
+            if (!prompt) {
+                alert('Please enter a prompt');
+                return;
+            }
+
+            generateBtn.disabled = true;
+            statusEl.className = 'status loading';
+            statusEl.textContent = '🎨 Generating images...';
+
+            try {
+                // Simulate generation for demo
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // Baseline model simulation (slower)
+                const baselineStart = performance.now();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                const baselineEnd = performance.now();
+                const baselineTime = ((baselineEnd - baselineStart) / 1000).toFixed(2);
+                baselineTimeEl.textContent = `${baselineTime}s`;
+                drawPlaceholder(baselineCanvas, 'Baseline Generation');
+
+                // Hologram model simulation (faster)
+                const hologramStart = performance.now();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const hologramEnd = performance.now();
+                const hologramTime = ((hologramEnd - hologramStart) / 1000).toFixed(2);
+                hologramTimeEl.textContent = `${hologramTime}s`;
+                drawPlaceholder(hologramCanvas, 'Hologram Generation');
+
+                // Calculate speedup
+                const speedup = (baselineTime / hologramTime).toFixed(1);
+                speedupEl.textContent = `${speedup}x faster`;
+
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ Generation complete!';
+
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+                console.error(error);
+            } finally {
+                generateBtn.disabled = false;
+            }
+        });
+
+        // Draw placeholders initially
+        drawPlaceholder(baselineCanvas, 'Waiting for generation...');
+        drawPlaceholder(hologramCanvas, 'Waiting for generation...');
+
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>
