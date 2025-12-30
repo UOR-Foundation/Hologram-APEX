@@ -1,0 +1,40 @@
+[package]
+name = "atlas-backends"
+version = "0.1.0"
+edition = "2021"
+authors = ["UOR Foundation"]
+description = "Backend implementations for Atlas ISA on CPU, GPU, quantum, and analog substrates"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+atlas-runtime = { path = "../atlas-runtime" }
+atlas-isa = { path = "../atlas-isa" }
+atlas-core = { path = "../atlas-core" }
+atlas-embeddings.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot = "0.12"
+rayon = "1.10"
+bytemuck = "1.14"
+half = "2.4"
+
+# Platform-specific for cache pinning
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_SystemInformation",
+] }
+
+[dev-dependencies]
+proptest = "1.4"
+
+[features]
+default = ["cpu"]
+cpu = []
+gpu = []
+quantum = []
+analog = []

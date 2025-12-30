@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 714d985ff5b7e1382cf86fe0f6c77c673ffa7f3115b8338e010a4a2e8a703821 # shrinks to class = 0, base = AtlasRatio { numer: -1, denom: 8 }, delta = AtlasRatio { numer: 2947757370069228401, denom: 1 }
