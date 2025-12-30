@@ -1,0 +1,56 @@
+[package]
+name = "hologram-memory-manager"
+version = "0.1.0"
+edition = "2021"
+authors = ["UOR Foundation"]
+description = "Memory manager with automatic gauge construction via primorial chunking and hybrid backend integration"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/UOR-Foundation/hologramapp"
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+tracing = ["dep:tracing"]
+
+[dependencies]
+hologram-backends = { workspace = true }
+hologram-core = { workspace = true }
+parking_lot = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true, optional = true }
+bytemuck = { workspace = true }
+rayon = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+# Benchmarks
+[[bench]]
+name = "domain_head_performance"
+harness = false
+
+[[bench]]
+name = "embedding_performance"
+harness = false
+
+[[bench]]
+name = "optimization_methods"
+harness = false
+
+[[bench]]
+name = "period_chunking"
+harness = false
+
+[[bench]]
+name = "simd_domain_heads"
+harness = false
+
+[[bench]]
+name = "statistics"
+harness = false
+
+[[bench]]
+name = "streaming"
+harness = false
