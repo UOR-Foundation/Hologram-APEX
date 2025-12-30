@@ -1,0 +1,77 @@
+[package]
+name = "hologram-hrm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hologram Contributors"]
+description = "Hierarchical Representation Model (HRM) for compile-time memory address resolution"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Atlas foundation (12,288 × 96 addressing)
+atlas-core = { path = "../atlas-core" }
+
+# Core operations
+hologram-core = { path = "../hologram-core" }
+
+# Extend base-96 system
+hologram-compiler = { path = "../hologram-compiler" }
+
+# Backend ISA for pass 3 optimization
+hologram-backends = { path = "../hologram-backends" }
+
+# Apache Arrow ecosystem (direct integration, no external DB)
+arrow = { version = "53", features = ["ipc"] }
+arrow-array = "53"
+arrow-schema = "53"
+parquet = "53"
+
+# Arbitrary-precision integers
+num-bigint = "0.4"
+num-traits = "0.2"
+
+# Fast hashing
+sha2 = "0.10"
+ahash = "0.8"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Logging
+log = "0.4"
+
+# PRNG for Atlas generation
+rand_core = "0.6"
+
+# Concurrency primitives
+parking_lot = "0.12"
+rayon = "1.10"
+
+[build-dependencies]
+arrow = { version = "53", features = ["ipc"] }
+arrow-array = "53"
+parquet = "53"
+sha2 = "0.10"
+
+[dev-dependencies]
+proptest = "1.0"
+criterion = "0.5"
+tempfile = "3"
+
+[features]
+default = []
+# wasm = ["tonbo/opfs"]  # Enable OPFS backend for WASM (feature not available in tonbo 0.2)
+
+# Benchmarks commented out until implemented
+# [[bench]]
+# name = "griess_product"
+# harness = false
+#
+# [[bench]]
+# name = "tonbo_bench"
+# harness = false
