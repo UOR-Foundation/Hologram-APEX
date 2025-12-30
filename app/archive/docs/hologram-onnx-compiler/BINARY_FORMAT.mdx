@@ -1,0 +1,640 @@
+---
+title: ".mshr Binary Format Specification"
+description: ".mshr Binary Format Specification documentation"
+---
+
+# .mshr Binary Format Specification
+
+**Version**: 1.0
+**Last Updated**: 2025-11-13
+**Status**: Stable
+
+## Overview
+
+The `.mshr` (MoonShineHRM) binary format is a memory-mapped file format designed for zero-copy loading and O(1) SIMD inference. It stores pre-computed operation results, perfect hash tables, and model metadata in a hybrid JSON/binary layout optimized for memory-mapped I/O.
+
+### Design Goals
+
+1. **Zero-Copy Loading**: Entire file can be memory-mapped without deserialization
+2. **SIMD Alignment**: All binary sections aligned to 64-byte boundaries for AVX-512
+3. **Debuggability**: JSON sections for manifest, hash tables, and metadata
+4. **Compactness**: Binary address space for maximum density
+5. **Versioning**: Forward-compatible header with version field
+
+### File Extension
+
+- **Extension**: `.mshr`
+- **MIME Type**: `application/x-moonshine-hrm` (proposed)
+
+## File Structure
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        .mshr File                            │
+├─────────────────────────────────────────────────────────────┤
+│ Header                                         (64 bytes)    │
+│   - Magic bytes: "MSHR"                                      │
+│   - Version: 1                                               │
+│   - Section offsets (8 u64 values)                           │
+├─────────────────────────────────────────────────────────────┤
+│ Manifest Section                               (JSON)        │
+│   - CollectionManifest from Pass 1                           │
+│   - Padding to 64-byte alignment                             │
+├─────────────────────────────────────────────────────────────┤
+│ Address Space Section                          (Binary)      │
+│   - Pre-computed results as raw bytes                        │
+│   - Padding to 64-byte alignment                             │
+├─────────────────────────────────────────────────────────────┤
+│ Hash Tables Section                            (JSON)        │
+│   - Array of PerfectHashTable                                │
+│   - Padding to 64-byte alignment                             │
+├─────────────────────────────────────────────────────────────┤
+│ Metadata Section                               (JSON)        │
+│   - Array of OperationMetadata                               │
+│   - No padding (end of file)                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Section Details
+
+### 1. Header Section
+
+**Offset**: 0
+**Size**: 64 bytes (fixed)
+**Encoding**: Little-endian binary
+
+#### Layout
+
+| Offset | Size | Type | Field                    | Description                      |
+| ------ | ---- | ---- | ------------------------ | -------------------------------- |
+| 0      | 4    | u8[] | magic                    | Magic bytes: `"MSHR"` (0x4D, 0x53, 0x48, 0x52) |
+| 4      | 4    | u32  | version                  | Format version (currently 1)     |
+| 8      | 8    | u64  | manifest_offset          | Byte offset to manifest section  |
+| 16     | 8    | u64  | address_space_offset     | Byte offset to address space     |
+| 24     | 8    | u64  | hash_tables_offset       | Byte offset to hash tables       |
+| 32     | 8    | u64  | metadata_offset          | Byte offset to metadata          |
+| 40     | 8    | u64  | manifest_size            | Size of manifest in bytes        |
+| 48     | 8    | u64  | address_space_size       | Size of address space in bytes   |
+| 56     | 8    | u64  | hash_tables_size         | Size of hash tables in bytes     |
+| 64     | 8    | u64  | metadata_size            | Size of metadata in bytes        |
+
+**Total**: 72 bytes of data + 0 bytes padding = 64 bytes (INVALID - should be 72!)
+
+**Correction**: Header is actually 72 bytes, not 64. The next section starts at offset 72.
+
+#### Magic Bytes
+
+- **Value**: `"MSHR"` (ASCII)
+- **Hex**: `0x4D 0x53 0x48 0x52`
+- **Purpose**: Identify file type and endianness
+
+#### Version Field
+
+- **Current Version**: 1
+- **Type**: u32 (little-endian)
+- **Values**:
+  - 1: Initial version (this specification)
+  - 2+: Reserved for future versions
+
+**Version Compatibility**:
+- Runtimes MUST reject files with unsupported versions
+- Breaking changes MUST increment the version number
+- Non-breaking changes MAY add new optional sections without version change
+
+#### Section Offsets and Sizes
+
+All offsets are absolute byte offsets from the start of the file.
+
+**Invariants**:
+- `manifest_offset >= 72` (after header)
+- `address_space_offset >= manifest_offset + manifest_size + padding`
+- `hash_tables_offset >= address_space_offset + address_space_size + padding`
+- `metadata_offset >= hash_tables_offset + hash_tables_size + padding`
+- All section offsets MUST be 64-byte aligned (offset % 64 == 0)
+
+### 2. Manifest Section
+
+**Offset**: `manifest_offset` (from header)
+**Size**: `manifest_size` (from header)
+**Encoding**: UTF-8 JSON
+**Alignment**: 64-byte (with padding)
+
+#### Format
+
+JSON serialization of `CollectionManifest`:
+
+```json
+{
+  "unique_values": [1.0, 2.0, 3.0, ...],
+  "operation_value_map": {
+    "0": [0, 1, 2],
+    "1": [3, 4, 5]
+  },
+  "operation_stats": [
+    {
+      "op_id": 0,
+      "op_type": "MatMul",
+      "input_sizes": [1024, 512],
+      "output_sizes": [1024, 256],
+      "input_shapes": [[1, 1024], [512, 256]],
+      "output_shapes": [[1, 256]],
+      "compute_cost": 1000000
+    }
+  ],
+  "patterns_per_operation": [5000, 3000, 2000],
+  "total_memory_needed": 6189000000,
+  "estimated_compilation_time": {
+    "secs": 1547,
+    "nanos": 0
+  },
+  "discretization_strategies": [
+    {
+      "HashBuckets": {
+        "num_buckets": 100
+      }
+    }
+  ]
+}
+```
+
+#### Field Descriptions
+
+- **unique_values**: Array of unique f32 weight values from Pass 1
+- **operation_value_map**: Map from operation ID to indices in unique_values
+- **operation_stats**: Statistics for each operation
+  - **op_id**: Operation index
+  - **op_type**: ONNX operation type (e.g., "MatMul", "Conv")
+  - **input_sizes**: Number of elements in each input
+  - **output_sizes**: Number of elements in each output
+  - **input_shapes**: Optional shape information for inputs
+  - **output_shapes**: Optional shape information for outputs
+  - **compute_cost**: Estimated FLOPs
+- **patterns_per_operation**: Number of input patterns per operation
+- **total_memory_needed**: Total address space size (should match address_space_size)
+- **estimated_compilation_time**: Estimated compilation time for Pass 3
+- **discretization_strategies**: Discretization strategy per operation
+
+#### Padding
+
+After the JSON data, the file is padded with null bytes (`0x00`) to the next 64-byte boundary:
+
+```
+padding_size = (64 - (manifest_size % 64)) % 64
+```
+
+### 3. Address Space Section
+
+**Offset**: `address_space_offset` (from header)
+**Size**: `address_space_size` (from header)
+**Encoding**: Raw binary (pre-computed results)
+**Alignment**: 64-byte (with padding)
+
+#### Format
+
+Raw binary blob containing pre-computed operation results. Results are stored at offsets computed from `ExtendedAddress`:
+
+```
+offset = class * 480 * 256 * 65536
+       + page * 256 * 65536
+       + byte * 65536
+       + sub_index
+```
+
+**Layout**:
+- No internal structure (flat byte array)
+- Results stored at addresses determined by factorization
+- Unused addresses contain garbage data (never accessed)
+
+#### Result Encoding
+
+Each result is a sequence of f32 values (4 bytes each, little-endian):
+
+```
+Result {
+    data: [f32; N]  // N determined by operation output size
+}
+```
+
+**Example**: MatMul output of 256 f32 values:
+- Size: 256 × 4 = 1024 bytes
+- Encoding: 256 consecutive f32 values in little-endian
+
+#### Padding
+
+After the address space data, the file is padded with null bytes to the next 64-byte boundary.
+
+### 4. Hash Tables Section
+
+**Offset**: `hash_tables_offset` (from header)
+**Size**: `hash_tables_size` (from header)
+**Encoding**: UTF-8 JSON
+**Alignment**: 64-byte (with padding)
+
+#### Format
+
+JSON serialization of `Vec<PerfectHashTable>`:
+
+```json
+[
+  {
+    "entries": {
+      "12345678901234567": {
+        "class": 0,
+        "page": 10,
+        "byte": 128,
+        "sub_index": 5000
+      },
+      "98765432109876543": {
+        "class": 1,
+        "page": 20,
+        "byte": 64,
+        "sub_index": 10000
+      }
+    },
+    "collision_count": 0
+  }
+]
+```
+
+#### Field Descriptions
+
+- **entries**: Map from input hash (u64) to ExtendedAddress
+  - **Key**: Input hash as string (JSON doesn't support u64 keys)
+  - **Value**: ExtendedAddress with class, page, byte, sub_index
+- **collision_count**: Number of hash collisions (should be 0 for perfect hash)
+
+#### Hash Function
+
+Input hashing uses AHash:
+
+```rust
+fn hash_input(input: &[f32]) -> u64 {
+    let mut hasher = AHasher::default();
+    for &value in input {
+        value.to_bits().hash(&mut hasher);
+    }
+    hasher.finish()
+}
+```
+
+**Properties**:
+- Deterministic: Same input → same hash
+- Fast: SIMD-accelerated (~10ns)
+- Collision-resistant: Good avalanche properties
+
+#### Padding
+
+After the JSON data, the file is padded to the next 64-byte boundary.
+
+### 5. Metadata Section
+
+**Offset**: `metadata_offset` (from header)
+**Size**: `metadata_size` (from header)
+**Encoding**: UTF-8 JSON
+**Alignment**: None (end of file)
+
+#### Format
+
+JSON serialization of `Vec<OperationMetadata>`:
+
+```json
+[
+  {
+    "op_id": 0,
+    "op_type": "MatMul",
+    "memory_required": 1024,
+    "num_patterns": 5000,
+    "input_shapes": [[1, 1024], [512, 256]],
+    "output_shapes": [[1, 256]]
+  }
+]
+```
+
+#### Field Descriptions
+
+- **op_id**: Operation index (matches operation_stats)
+- **op_type**: ONNX operation type
+- **memory_required**: Bytes required for result storage
+- **num_patterns**: Number of pre-computed patterns
+- **input_shapes**: Optional input shape information
+- **output_shapes**: Optional output shape information
+
+#### No Padding
+
+The metadata section is the last section in the file and does not require padding.
+
+## Alignment Requirements
+
+### Why 64-byte Alignment?
+
+64-byte alignment ensures optimal SIMD performance:
+
+- **AVX-512**: 64-byte cache lines, 512-bit (64-byte) registers
+- **Cache Lines**: Modern CPUs use 64-byte cache lines
+- **Page Boundaries**: Reduces cross-page loads
+
+### Alignment Calculation
+
+```rust
+const SIMD_ALIGNMENT: usize = 64;
+
+fn align_padding(offset: u64) -> usize {
+    let remainder = (offset as usize) % SIMD_ALIGNMENT;
+    if remainder == 0 {
+        0
+    } else {
+        SIMD_ALIGNMENT - remainder
+    }
+}
+```
+
+### Alignment Overhead
+
+Typical overhead: <1% of file size
+
+**Example**: 10 GB address space
+- Manifest: 100 KB + 50 bytes padding
+- Address space: 10 GB + 32 bytes padding
+- Hash tables: 500 MB + 16 bytes padding
+- **Total overhead**: 98 bytes (~0.000001%)
+
+## File Size Estimation
+
+### Formula
+
+```
+file_size = 72                              // Header
+          + manifest_size + padding
+          + address_space_size + padding
+          + hash_tables_size + padding
+          + metadata_size
+```
+
+### Typical Sizes
+
+| Component         | Small Model | Medium Model | Large Model |
+| ----------------- | ----------- | ------------ | ----------- |
+| Header            | 72 bytes    | 72 bytes     | 72 bytes    |
+| Manifest          | ~10 KB      | ~100 KB      | ~1 MB       |
+| Address Space     | ~100 MB     | ~1 GB        | ~10 GB      |
+| Hash Tables       | ~10 MB      | ~100 MB      | ~1 GB       |
+| Metadata          | ~1 KB       | ~10 KB       | ~100 KB     |
+| **Total**         | **~110 MB** | **~1.2 GB**  | **~12 GB**  |
+
+### Compression
+
+The format is NOT compressed by default. For smaller files:
+
+**Option 1**: External compression (gzip, zstd)
+```bash
+zstd -19 model.mshr -o model.mshr.zst
+```
+
+**Option 2**: Sparse storage (future enhancement)
+- Store only non-zero results
+- Use sparse tensor formats (COO, CSR)
+
+## Validation
+
+### Minimal Validation (Runtime)
+
+Runtimes MUST validate:
+1. Magic bytes equal `"MSHR"`
+2. Version is supported
+3. File size >= 72 bytes
+4. All section offsets are 64-byte aligned
+5. All section offsets are within file bounds
+6. All section sizes are non-negative
+
+### Full Validation (Tools)
+
+Validation tools SHOULD additionally check:
+1. JSON sections are valid JSON
+2. JSON schemas match expected types
+3. Address space size matches manifest.total_memory_needed
+4. Hash tables contain no duplicates
+5. All addresses are within address space bounds
+6. Operation IDs are sequential starting from 0
+
+### Validation Example
+
+```rust
+fn validate_mshr_file(path: &Path) -> Result<()> {
+    let file = File::open(path)?;
+    let file_size = file.metadata()?.len();
+
+    // Read header
+    let mut header = [0u8; 72];
+    file.read_exact(&mut header)?;
+
+    // Check magic
+    if &header[0..4] != b"MSHR" {
+        return Err(Error::InvalidMagic);
+    }
+
+    // Check version
+    let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+    if version != 1 {
+        return Err(Error::UnsupportedVersion(version));
+    }
+
+    // Read offsets
+    let manifest_offset = u64::from_le_bytes(header[8..16].try_into()?);
+    let address_space_offset = u64::from_le_bytes(header[16..24].try_into()?);
+    // ... etc
+
+    // Check alignment
+    if manifest_offset % 64 != 0 {
+        return Err(Error::InvalidAlignment);
+    }
+
+    // Check bounds
+    if address_space_offset + address_space_size > file_size {
+        return Err(Error::InvalidBounds);
+    }
+
+    Ok(())
+}
+```
+
+## Versioning and Compatibility
+
+### Version 1 (Current)
+
+- Initial specification
+- 64-byte SIMD alignment
+- JSON manifest, hash tables, metadata
+- Binary address space
+
+### Future Versions
+
+**Version 2** (proposed):
+- Compressed address space (zstd)
+- Sparse storage for hash tables
+- Optional model signature (cryptographic hash)
+
+**Version 3** (proposed):
+- Multi-precision support (f16, bf16, f64)
+- Hierarchical address space (reduce size)
+- Incremental updates (partial recompilation)
+
+### Backward Compatibility
+
+Runtimes MUST:
+- Reject files with version > supported version
+- Provide clear error messages for unsupported versions
+
+Compilers SHOULD:
+- Allow specifying target version via CLI flag
+- Default to latest version
+
+## Security Considerations
+
+### Memory Safety
+
+- **Bounds Checking**: All address lookups MUST be bounds-checked
+- **Overflow Protection**: Offset calculations MUST check for overflow
+- **Alignment**: Unaligned reads may cause crashes on some architectures
+
+### Malicious Files
+
+Potential attacks:
+1. **Crafted Offsets**: Point sections outside file bounds
+2. **Integer Overflow**: Cause offset calculation overflow
+3. **JSON Bomb**: Deeply nested JSON (denial of service)
+4. **Hash Collision**: Force hash table lookups to fail
+
+**Mitigations**:
+- Validate all offsets before use
+- Use checked arithmetic for offset calculations
+- Limit JSON parsing depth (e.g., 100 levels)
+- Use collision-resistant hash function (AHash)
+
+### Trusted Inputs
+
+The format assumes trusted inputs:
+- Models compiled by trusted compiler
+- Files not modified after compilation
+- No untrusted user-provided .mshr files
+
+**For untrusted inputs**:
+- Add cryptographic signature (e.g., Ed25519)
+- Validate signature before loading
+- Use sandboxed runtime (WASM)
+
+## Tools and Utilities
+
+### Compiler (Pass 4)
+
+```bash
+hologram-onnx-compiler compile model.onnx -o model.mshr
+```
+
+### Inspector
+
+```bash
+hologram-onnx-compiler inspect model.mshr
+
+# Output:
+# Version: 1
+# Manifest size: 102,400 bytes
+# Address space: 1,073,741,824 bytes
+# Hash tables: 104,857,600 bytes
+# Metadata: 5,120 bytes
+# Total: 1,178,706,944 bytes
+```
+
+### Validator
+
+```bash
+hologram-onnx-compiler validate model.mshr
+
+# Output:
+# ✓ Magic bytes valid
+# ✓ Version supported (1)
+# ✓ Offsets aligned (64 bytes)
+# ✓ Offsets within bounds
+# ✓ JSON valid
+# ✓ Hash tables valid
+# ✓ All checks passed
+```
+
+### Converter (Future)
+
+```bash
+# Convert to compressed format
+hologram-onnx-compiler convert model.mshr --compress -o model.compressed.mshr
+
+# Convert to sparse format
+hologram-onnx-compiler convert model.mshr --sparse -o model.sparse.mshr
+```
+
+## Examples
+
+### Minimal Valid File
+
+The smallest valid .mshr file:
+
+```
+Header (72 bytes):
+  4D 53 48 52              # Magic: "MSHR"
+  01 00 00 00              # Version: 1
+  48 00 00 00 00 00 00 00  # manifest_offset: 72
+  80 00 00 00 00 00 00 00  # address_space_offset: 128
+  C0 00 00 00 00 00 00 00  # hash_tables_offset: 192
+  00 01 00 00 00 00 00 00  # metadata_offset: 256
+  02 00 00 00 00 00 00 00  # manifest_size: 2
+  00 00 00 00 00 00 00 00  # address_space_size: 0
+  02 00 00 00 00 00 00 00  # hash_tables_size: 2
+  02 00 00 00 00 00 00 00  # metadata_size: 2
+
+Manifest (2 bytes + 62 padding):
+  7B 7D                    # JSON: "{}"
+  00 00 ... (62 zeros)     # Padding
+
+Address Space (0 bytes + 64 padding):
+  00 00 ... (64 zeros)     # Padding
+
+Hash Tables (2 bytes + 62 padding):
+  5B 5D                    # JSON: "[]"
+  00 00 ... (62 zeros)     # Padding
+
+Metadata (2 bytes):
+  5B 5D                    # JSON: "[]"
+```
+
+**Total size**: 258 bytes
+
+### Real-World Example
+
+ResNet-50 compiled model:
+
+```
+Header:                  72 bytes
+Manifest:           102,400 bytes  (100 KB JSON + 32 padding)
+Address Space: 6,442,450,944 bytes  (6 GB binary + 0 padding)
+Hash Tables:    104,857,600 bytes  (100 MB JSON + 0 padding)
+Metadata:             5,120 bytes  (5 KB JSON)
+──────────────────────────────────
+Total:         6,547,416,136 bytes  (~6.1 GB)
+```
+
+## References
+
+- [MoonshineHRM Specification](../hrm/project.md)
+- [Pass 4 Implementation](PASS4_BINARY.md)
+- [Runtime Documentation](RUNTIME.md)
+- [AHash Documentation](https://docs.rs/ahash)
+
+## Changelog
+
+### Version 1.0 (2025-11-13)
+
+- Initial specification
+- 64-byte SIMD alignment
+- Hybrid JSON/binary format
+- Perfect hash tables
+
+## License
+
+MIT OR Apache-2.0

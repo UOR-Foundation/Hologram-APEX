@@ -1,0 +1,297 @@
+---
+title: "Production Streaming Architecture for Large ONNX Models"
+description: "Production Streaming Architecture for Large ONNX Models documentation"
+---
+
+# Production Streaming Architecture for Large ONNX Models
+
+## Problem Statement
+
+Current implementation (zero-copy slices) still requires parsing the entire protobuf in WASM memory:
+- **SD Turbo U-Net**: 1.7GB → crashes during protobuf parse
+- **WASM linear memory limit**: ~2GB total
+- **Bottleneck**: `prost::decode()` needs the full protobuf in memory
+
+## Solution: True Streaming (Network → WebGPU)
+
+Stream protobuf chunks directly to WebGPU without ever loading the full model into WASM memory.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  JavaScript (fetch with Range headers)                  │
+│  ↓                                                       │
+│  Parse protobuf header (~1MB) → Graph structure         │
+│  ↓                                                       │
+│  For each initializer:                                  │
+│    - Fetch byte range (100-500MB chunks)                │
+│    - Stream directly to WebGPU buffer                   │
+│    - NO intermediate WASM allocation                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Implementation Phases
+
+#### Phase A: Protobuf Streaming Parser (Rust)
+
+Implement incremental protobuf parsing that yields initializers one at a time:
+
+```rust
+// hologram-onnx/src/proto/streaming.rs
+pub struct StreamingModelParser {
+    reader: ProtobufStreamReader,
+    graph_structure: GraphStructure,
+    initializer_metadata: Vec<InitializerMetadata>,
+}
+
+pub struct InitializerMetadata {
+    pub name: String,
+    pub dtype: DataType,
+    pub shape: Vec<usize>,
+    pub byte_offset: u64,
+    pub byte_length: u64,
+}
+
+impl StreamingModelParser {
+    /// Parse just the graph structure (small - ~1MB)
+    pub async fn parse_header(bytes: &[u8]) -> Result<Self> {
+        // Parse model.graph.node[] (execution graph)
+        // Parse model.graph.input[], model.graph.output[]
+        // Parse model.graph.initializer[] metadata (NOT data)
+        //   - Extract name, dims, data_type
+        //   - Record byte offsets in protobuf
+
+        // Returns: Graph structure + initializer metadata
+        // Does NOT load initializer data (just metadata)
+    }
+
+    /// Stream a specific initializer's data to WebGPU
+    pub async fn stream_initializer_to_gpu(
+        &self,
+        name: &str,
+        exec: &mut Executor,
+        fetch_range_fn: impl Fn(u64, u64) -> Future<Output = Vec<u8>>,
+    ) -> Result<OnnxTensor> {
+        let meta = self.get_initializer_metadata(name)?;
+
+        // Fetch just this initializer's bytes via HTTP Range header
+        let bytes = fetch_range_fn(meta.byte_offset, meta.byte_offset + meta.byte_length).await;
+
+        // Allocate WebGPU buffer (not WASM memory)
+        let buffer = exec.allocate_raw(meta.byte_length)?;
+
+        // Stream bytes directly to GPU via hologram-memory-manager
+        use hologram_memory_manager::UniversalMemoryPool;
+        let mut pool = UniversalMemoryPool::new();
+
+        // Get WebGPU backend pool
+        let backend = exec.backend();
+        let gpu_pool = backend.lock().allocate_pool(meta.byte_length)?;
+
+        // Stream to GPU (bypasses WASM)
+        pool.embed_to_pool(&bytes, backend, gpu_pool, 5)?;
+
+        // Create tensor referencing GPU buffer
+        let tensor = OnnxTensor::from_device_pool(
+            buffer,
+            meta.shape.clone(),
+            meta.dtype,
+        )?;
+
+        Ok(tensor)
+    }
+}
+```
+
+#### Phase B: WASM Bindings for Streaming
+
+```rust
+// hologram-onnx/src/wasm.rs
+#[wasm_bindgen]
+pub async fn load_model_streaming(url: String) -> Result<WasmOnnxModel, JsValue> {
+    console_log!("Streaming model from: {}", url);
+
+    // 1. Fetch first 10MB to parse header
+    let header_bytes = fetch_range(&url, 0, 10_000_000).await?;
+
+    // 2. Parse graph structure (small - just metadata)
+    let parser = StreamingModelParser::parse_header(&header_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse header: {}", e)))?;
+
+    console_log!("✓ Model header parsed");
+    console_log!("  Graph nodes: {}", parser.graph_structure.nodes.len());
+    console_log!("  Initializers: {}", parser.initializer_metadata.len());
+
+    // 3. Create executor with WebGPU backend
+    let mut exec = Executor::new_with_backend_async(BackendType::WebGpu).await
+        .map_err(|e| JsValue::from_str(&format!("Failed to create executor: {}", e)))?;
+
+    // 4. Stream each initializer to GPU (one at a time - never loads full model)
+    let mut initializers = HashMap::new();
+    for (i, meta) in parser.initializer_metadata.iter().enumerate() {
+        console_log!(
+            "Streaming initializer {}/{}: {} ({} MB)",
+            i + 1,
+            parser.initializer_metadata.len(),
+            meta.name,
+            meta.byte_length / 1_000_000
+        );
+
+        // Create fetch closure for this initializer
+        let url_clone = url.clone();
+        let fetch_fn = |start: u64, end: u64| async move {
+            fetch_range(&url_clone, start, end).await
+        };
+
+        // Stream directly to GPU (bypasses WASM)
+        let tensor = parser.stream_initializer_to_gpu(&meta.name, &mut exec, fetch_fn).await
+            .map_err(|e| JsValue::from_str(&format!("Failed to stream initializer: {}", e)))?;
+
+        initializers.insert(meta.name.clone(), tensor);
+    }
+
+    console_log!("✓ All initializers streamed to GPU");
+
+    // 5. Create executor with streamed initializers
+    let onnx_executor = OnnxExecutor::new_with_initializers(
+        exec,
+        parser.graph_structure,
+        initializers,
+    )?;
+
+    Ok(WasmOnnxModel {
+        model: None,
+        executor: Some(onnx_executor),
+    })
+}
+
+// Helper: Fetch byte range via HTTP Range header
+async fn fetch_range(url: &str, start: u64, end: u64) -> Result<Vec<u8>, JsValue> {
+    use web_sys::{Request, RequestInit, Headers, Response};
+    use wasm_bindgen_futures::JsFuture;
+
+    // Create request with Range header
+    let mut opts = RequestInit::new();
+    opts.method("GET");
+
+    let headers = Headers::new()?;
+    headers.set("Range", &format!("bytes={}-{}", start, end - 1))?;
+    opts.headers(&headers);
+
+    let request = Request::new_with_str_and_init(url, &opts)?;
+
+    // Fetch
+    let window = web_sys::window().ok_or("No window")?;
+    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
+    let resp: Response = resp_value.dyn_into()?;
+
+    // Get bytes
+    let array_buffer = JsFuture::from(resp.array_buffer()?).await?;
+    let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+
+    Ok(uint8_array.to_vec())
+}
+```
+
+#### Phase C: JavaScript Integration
+
+```typescript
+// onnx-inference.ts
+export class OnnxInference {
+  async loadModelStreaming(modelUrl: string): Promise<void> {
+    if (!this.wasmInitialized) {
+      throw new Error('WASM not initialized');
+    }
+
+    console.log(`[Streaming] Loading model from: ${modelUrl}`);
+
+    // Call Rust streaming loader (handles everything)
+    this.model = await load_model_streaming(modelUrl);
+
+    console.log('[Streaming] ✓ Model loaded via streaming');
+  }
+}
+
+// Usage in demo
+const inference = new OnnxInference();
+await inference.initialize();
+await inference.loadModelStreaming('/models/onnx/sd-turbo/unet/model.onnx');
+// Now can handle 1.7GB model!
+```
+
+### Memory Usage Comparison
+
+| Approach | WASM Usage | GPU Usage | Can Load 1.7GB? |
+|----------|------------|-----------|-----------------|
+| Original (`.to_vec()`) | 1.7GB | 1.7GB | ❌ No |
+| Zero-copy slices | 1.7GB | 1.7GB | ❌ No |
+| **Streaming** | **~10MB** | **1.7GB** | **✅ Yes** |
+
+### Performance Benefits
+
+1. **Unlimited model size** - Only limited by GPU VRAM (16-24GB typical)
+2. **Lower latency** - Start execution before full download completes
+3. **Memory efficient** - Peak WASM usage: header size (~10MB)
+4. **Progressive loading** - Can show loading progress per initializer
+
+## Implementation Timeline
+
+- **Phase A (Protobuf Streaming)**: 2-3 hours
+  - Implement `StreamingModelParser`
+  - Add `embed_to_pool` integration
+  - Unit tests for incremental parsing
+
+- **Phase B (WASM Bindings)**: 1 hour
+  - Add `load_model_streaming` binding
+  - Implement `fetch_range` helper
+  - Integration tests
+
+- **Phase C (JS Integration)**: 30 min
+  - Update `OnnxInference` class
+  - Add progress callbacks
+  - Demo page integration
+
+**Total**: 3.5-4 hours for production streaming
+
+## Testing Strategy
+
+1. **Unit Tests**
+   - Test header parsing with synthetic protobuf
+   - Test byte range extraction
+   - Test GPU buffer streaming
+
+2. **Integration Tests**
+   - Stream 500MB model (text encoder)
+   - Stream 1.7GB model (U-Net)
+   - Verify memory usage stays under 50MB WASM
+
+3. **Browser Tests**
+   - Monitor WASM memory (should peak ~10MB)
+   - Monitor GPU VRAM (should show full model)
+   - Verify inference works correctly
+
+## Future Enhancements
+
+### Chunked Execution (O(1) Memory)
+Once streaming works, we can implement hologram-memory-manager's O(1) space amplification:
+
+```rust
+// Execute model with streaming weights (constant memory)
+pub async fn execute_streaming(
+    &mut self,
+    inputs: HashMap<String, OnnxTensor>,
+    pool_size: usize, // e.g., 36KB
+) -> Result<HashMap<String, OnnxTensor>> {
+    // For each layer:
+    //   1. Stream weights for this layer to pool
+    //   2. Execute layer
+    //   3. Free pool (weights evicted)
+    //   4. Repeat
+
+    // Peak GPU memory: pool_size + activation_size
+    // vs. Current: full_model_size + activation_size
+}
+```
+
+This enables **100GB models on 1GB VRAM** via streaming execution.

@@ -1,0 +1,912 @@
+---
+title: "Streaming Pipeline Guide"
+description: "Streaming Pipeline Guide documentation"
+---
+
+# Streaming Pipeline Guide
+
+**Building Compute-Integrated Streaming Pipelines**
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Chunking Algorithms](#chunking-algorithms)
+3. [Compute Pipeline Design](#compute-pipeline-design)
+4. [StreamOp Trait](#streamop-trait)
+5. [Domain Heads](#domain-heads)
+6. [Advanced Patterns](#advanced-patterns)
+7. [Performance Optimization](#performance-optimization)
+
+---
+
+## Overview
+
+The hologram-memory-manager provides a **streaming-first architecture** that enables:
+
+- **Gauge-driven chunking**: Primorial-based periodicities
+- **Compute-integrated streaming**: Operations applied during chunking
+- **Zero-copy operations**: Direct Arc slice access
+- **Modality extraction**: Domain heads for different data views
+
+### Streaming Pipeline Architecture
+
+```
+Input Data (arbitrary size)
+    ↓
+┌─────────────────────────────────────────┐
+│ Phase 1: Chunking                       │
+│                                         │
+│  PeriodDrivenChunker                    │
+│  - Analyze primorial levels             │
+│  - Assign gauges automatically          │
+│  - Create ChunkWithGauge instances      │
+│  - Storage: CpuShared(Arc<[u8]>)        │
+└─────────────────────────────────────────┘
+    ↓ Vec<ChunkWithGauge>
+┌─────────────────────────────────────────┐
+│ Phase 2: Compute Pipeline (Optional)    │
+│                                         │
+│  ComputePipeline                        │
+│  - Apply StreamOps in sequence          │
+│  - Zero-copy operations (Arc slices)    │
+│  - Preserve gauge metadata              │
+│  - Operations: ReLU, ScalarMul, etc.    │
+└─────────────────────────────────────────┘
+    ↓ Vec<ChunkWithGauge> (transformed)
+┌─────────────────────────────────────────┐
+│ Phase 3: Embedding                      │
+│                                         │
+│  UniversalMemoryPool                    │
+│  - Convert chunks → EmbeddedBlock       │
+│  - Preserve gauge metadata              │
+│  - Pool: Vec<EmbeddedBlock>             │
+└─────────────────────────────────────────┘
+    ↓ StreamContext { pool, metrics }
+┌─────────────────────────────────────────┐
+│ Phase 4: Domain Extraction (Optional)   │
+│                                         │
+│  DomainHead trait                       │
+│  - NormalizeDomainHead                  │
+│  - FilterDomainHead                     │
+│  - AggregateDomainHead                  │
+│  - RawDomainHead                        │
+│  - Extract specific modalities          │
+└─────────────────────────────────────────┘
+    ↓ Modality (Normalized, Filtered, etc.)
+```
+
+---
+
+## Chunking Algorithms
+
+### PeriodDrivenChunker
+
+The core chunking algorithm uses **primorial-driven periodicities**.
+
+#### Primorial Sequence
+
+A primorial is the product of consecutive primes:
+
+```
+P(1) = 2           = 2
+P(2) = 2 × 3       = 6
+P(3) = 2 × 3 × 5   = 30
+P(4) = 2 × 3 × 5 × 7 = 210
+...
+```
+
+#### Chunk Sizes
+
+For a given primorial level `n`, chunk size is `P(n)`:
+
+| Level | Primorial | Chunk Size | Gauge Assignment |
+|-------|-----------|------------|------------------|
+| 0 | 1 | 1 byte | GAUGE_0 |
+| 1 | 2 | 2 bytes | GAUGE_1 |
+| 2 | 3 | 3 bytes | GAUGE_2 |
+| 3 | 6 | 6 bytes | GAUGE_3 |
+| 4 | 30 | 30 bytes | GAUGE_23 |
+| 5 | 210 | 210 bytes | GAUGE_23 (extended) |
+| ... | ... | ... | ... |
+
+#### Algorithm
+
+```rust
+pub struct PeriodDrivenChunker {
+    max_levels: usize, // Maximum primorial levels to use
+}
+
+impl PeriodDrivenChunker {
+    pub fn chunk(&self, data: Vec<u8>) -> Result<Vec<ChunkWithGauge>> {
+        let mut chunks = Vec::new();
+        let mut offset = 0;
+
+        // For each primorial level
+        for level in 0..self.max_levels {
+            let primorial = calculate_primorial(level);
+            let gauge = assign_gauge(primorial);
+
+            // Chunk data at this level
+            while offset + primorial <= data.len() {
+                let chunk_data = &data[offset..offset + primorial];
+                let arc: Arc<[u8]> = chunk_data.to_vec().into();
+
+                let chunk = ChunkWithGauge::from_arc(
+                    arc,
+                    gauge,
+                    primorial as u32,
+                    chunks.len(),
+                );
+
+                chunks.push(chunk);
+                offset += primorial;
+            }
+        }
+
+        // Handle remainder (if any)
+        if offset < data.len() {
+            let remainder = &data[offset..];
+            let arc: Arc<[u8]> = remainder.to_vec().into();
+            let chunk = ChunkWithGauge::from_arc(
+                arc,
+                0, // GAUGE_0 for remainder
+                remainder.len() as u32,
+                chunks.len(),
+            );
+            chunks.push(chunk);
+        }
+
+        Ok(chunks)
+    }
+}
+```
+
+#### Example Usage
+
+```rust
+use hologram_memory_manager::{Stream, DEFAULT_MAX_CHUNK_LEVELS};
+
+// Create input data
+let data: Vec<u8> = (0..1000).map(|i| (i % 256) as u8).collect();
+
+// Chunk with default primorial levels (10)
+let stream = Stream::new(data);
+let chunked = stream.chunk(DEFAULT_MAX_CHUNK_LEVELS)?;
+
+// Inspect chunks
+for chunk in chunked.chunks() {
+    println!("Primorial: {}, Gauge: {}, Size: {}",
+        chunk.primorial,
+        chunk.gauge_name(),
+        chunk.len());
+}
+
+// Output:
+// Primorial: 2, Gauge: GAUGE_1, Size: 2
+// Primorial: 3, Gauge: GAUGE_2, Size: 3
+// Primorial: 6, Gauge: GAUGE_3, Size: 6
+// Primorial: 30, Gauge: GAUGE_23, Size: 30
+// ...
+```
+
+### Fast Chunking
+
+For performance-critical paths, use `chunk_fast()`:
+
+```rust
+let chunker = PeriodDrivenChunker::new_fast(5);
+let chunks = chunker.chunk_fast(data)?;
+```
+
+**Difference**: Skips some validation checks for speed.
+
+---
+
+## Compute Pipeline Design
+
+The `ComputePipeline` enables **compute-integrated streaming**: operations are applied during the chunking process.
+
+### ComputePipeline Structure
+
+```rust
+pub struct ComputePipeline {
+    ops: Vec<Box<dyn StreamOp>>,
+}
+
+impl ComputePipeline {
+    /// Create empty pipeline
+    pub fn new() -> Self;
+
+    /// Add operation to pipeline
+    pub fn add_op<T: StreamOp + 'static>(mut self, op: T) -> Self;
+
+    /// Execute pipeline: chunk → apply ops → embed
+    pub fn execute(self, data: Vec<u8>, levels: usize) -> Result<StreamContext>;
+}
+```
+
+### Pipeline Execution Flow
+
+```
+Input Data
+    ↓
+Chunk into ChunkWithGauge instances
+    ↓
+For each chunk:
+    ├─ Apply op1 (ReLUOp)          → transformed_chunk
+    ├─ Apply op2 (ScalarMulOp)     → transformed_chunk
+    └─ Apply op3 (ClipOp)          → final_chunk
+         ↓
+Embed final_chunk into pool
+    ↓
+StreamContext
+```
+
+### Example: Multi-Operation Pipeline
+
+```rust
+use hologram_memory_manager::{ComputePipeline, ReLUOp, ScalarMulOp, ClipOp};
+
+// Create f32 data
+let float_data: Vec<f32> = (0..1024).map(|i| (i as f32) - 512.0).collect();
+let data: Vec<u8> = bytemuck::cast_slice(&float_data).to_vec();
+
+// Build pipeline
+let pipeline = ComputePipeline::new()
+    .add_op(ReLUOp)                          // max(0, x)
+    .add_op(ScalarMulOp { scale: 0.5 })      // x * 0.5
+    .add_op(ClipOp { min: 0.0, max: 100.0 }); // clamp(x, 0, 100)
+
+// Execute: chunk → apply ops → embed
+let context = pipeline.execute(data, 10)?;
+
+println!("Processed {} bytes into {} blocks",
+    context.total_bytes,
+    context.pool.len());
+```
+
+**Result**:
+- Input: `[-512.0, -511.0, ..., 0.0, ..., 511.0]`
+- After ReLU: `[0.0, 0.0, ..., 0.0, ..., 511.0]`
+- After ScalarMul: `[0.0, 0.0, ..., 0.0, ..., 255.5]`
+- After Clip: `[0.0, 0.0, ..., 0.0, ..., 100.0]`
+
+---
+
+## StreamOp Trait
+
+The `StreamOp` trait defines **stateless transformations** on chunks.
+
+### Trait Definition
+
+```rust
+pub trait StreamOp: Send + Sync {
+    /// Process a chunk with scalar operations
+    ///
+    /// # Arguments
+    ///
+    /// - `ctx`: Execution context (may be unused for scalar ops)
+    /// - `chunk`: Input chunk to process (must be CPU-resident)
+    ///
+    /// # Returns
+    ///
+    /// Processed chunk with same metadata (gauge, primorial, index)
+    fn process(
+        &self,
+        ctx: &mut StreamOpContext,
+        chunk: &ChunkWithGauge,
+    ) -> Result<ChunkWithGauge>;
+
+    /// Optional operation name for debugging
+    fn name(&self) -> &str {
+        "UnnamedOp"
+    }
+}
+```
+
+### Built-in StreamOps
+
+#### ReLUOp (Rectified Linear Unit)
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ReLUOp;
+
+impl StreamOp for ReLUOp {
+    fn process(&self, _ctx: &mut StreamOpContext, chunk: &ChunkWithGauge) -> Result<ChunkWithGauge> {
+        // Access chunk data (zero-copy)
+        let data = chunk.data().ok_or_else(|| {
+            ProcessorError::InvalidOperation("ReLU requires CPU-resident chunk".to_string())
+        })?;
+
+        // Cast to f32 slice
+        let input: &[f32] = bytemuck::cast_slice(data);
+
+        // Apply ReLU: max(0, x)
+        let output: Vec<f32> = input.iter().map(|&x| x.max(0.0)).collect();
+
+        // Create result chunk
+        let output_bytes: Vec<u8> = bytemuck::cast_slice(&output).to_vec();
+        let source: Arc<[u8]> = output_bytes.into();
+        Ok(ChunkWithGauge::from_arc(source, chunk.gauge, chunk.primorial, chunk.index))
+    }
+
+    fn name(&self) -> &str {
+        "ReLU"
+    }
+}
+```
+
+**Usage**:
+```rust
+let pipeline = ComputePipeline::new().add_op(ReLUOp);
+```
+
+#### ScalarMulOp (Scalar Multiplication)
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ScalarMulOp {
+    pub scale: f32,
+}
+
+impl StreamOp for ScalarMulOp {
+    fn process(&self, _ctx: &mut StreamOpContext, chunk: &ChunkWithGauge) -> Result<ChunkWithGauge> {
+        let data = chunk.data().ok_or_else(|| {
+            ProcessorError::InvalidOperation("ScalarMul requires CPU-resident chunk".to_string())
+        })?;
+
+        let input: &[f32] = bytemuck::cast_slice(data);
+
+        // Apply scalar multiplication: x * scale
+        let output: Vec<f32> = input.iter().map(|&x| x * self.scale).collect();
+
+        let output_bytes: Vec<u8> = bytemuck::cast_slice(&output).to_vec();
+        let source: Arc<[u8]> = output_bytes.into();
+        Ok(ChunkWithGauge::from_arc(source, chunk.gauge, chunk.primorial, chunk.index))
+    }
+
+    fn name(&self) -> &str {
+        "ScalarMul"
+    }
+}
+```
+
+**Usage**:
+```rust
+let pipeline = ComputePipeline::new().add_op(ScalarMulOp { scale: 2.0 });
+```
+
+#### ScalarAddOp (Scalar Addition)
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ScalarAddOp {
+    pub offset: f32,
+}
+
+impl StreamOp for ScalarAddOp {
+    fn process(&self, _ctx: &mut StreamOpContext, chunk: &ChunkWithGauge) -> Result<ChunkWithGauge> {
+        let data = chunk.data().ok_or_else(|| {
+            ProcessorError::InvalidOperation("ScalarAdd requires CPU-resident chunk".to_string())
+        })?;
+
+        let input: &[f32] = bytemuck::cast_slice(data);
+
+        // Apply scalar addition: x + offset
+        let output: Vec<f32> = input.iter().map(|&x| x + self.offset).collect();
+
+        let output_bytes: Vec<u8> = bytemuck::cast_slice(&output).to_vec();
+        let source: Arc<[u8]> = output_bytes.into();
+        Ok(ChunkWithGauge::from_arc(source, chunk.gauge, chunk.primorial, chunk.index))
+    }
+
+    fn name(&self) -> &str {
+        "ScalarAdd"
+    }
+}
+```
+
+**Usage**:
+```rust
+let pipeline = ComputePipeline::new().add_op(ScalarAddOp { offset: 10.0 });
+```
+
+#### ClipOp (Clamp to Range)
+
+```rust
+#[derive(Debug, Clone)]
+pub struct ClipOp {
+    pub min: f32,
+    pub max: f32,
+}
+
+impl StreamOp for ClipOp {
+    fn process(&self, _ctx: &mut StreamOpContext, chunk: &ChunkWithGauge) -> Result<ChunkWithGauge> {
+        let data = chunk.data().ok_or_else(|| {
+            ProcessorError::InvalidOperation("Clip requires CPU-resident chunk".to_string())
+        })?;
+
+        let input: &[f32] = bytemuck::cast_slice(data);
+
+        // Apply clip: clamp(x, min, max)
+        let output: Vec<f32> = input.iter().map(|&x| x.clamp(self.min, self.max)).collect();
+
+        let output_bytes: Vec<u8> = bytemuck::cast_slice(&output).to_vec();
+        let source: Arc<[u8]> = output_bytes.into();
+        Ok(ChunkWithGauge::from_arc(source, chunk.gauge, chunk.primorial, chunk.index))
+    }
+
+    fn name(&self) -> &str {
+        "Clip"
+    }
+}
+```
+
+**Usage**:
+```rust
+let pipeline = ComputePipeline::new().add_op(ClipOp { min: 0.0, max: 1.0 });
+```
+
+### Custom StreamOp Implementation
+
+```rust
+use hologram_memory_manager::{StreamOp, StreamOpContext, ChunkWithGauge, Result};
+
+/// Custom operation: square each element
+#[derive(Debug, Clone)]
+pub struct SquareOp;
+
+impl StreamOp for SquareOp {
+    fn process(&self, _ctx: &mut StreamOpContext, chunk: &ChunkWithGauge) -> Result<ChunkWithGauge> {
+        // Access chunk data
+        let data = chunk.data().ok_or_else(|| {
+            ProcessorError::InvalidOperation("SquareOp requires CPU-resident chunk".to_string())
+        })?;
+
+        // Cast to f32
+        let input: &[f32] = bytemuck::cast_slice(data);
+
+        // Apply operation: x²
+        let output: Vec<f32> = input.iter().map(|&x| x * x).collect();
+
+        // Create result chunk
+        let output_bytes: Vec<u8> = bytemuck::cast_slice(&output).to_vec();
+        let source: Arc<[u8]> = output_bytes.into();
+        Ok(ChunkWithGauge::from_arc(source, chunk.gauge, chunk.primorial, chunk.index))
+    }
+
+    fn name(&self) -> &str {
+        "Square"
+    }
+}
+
+// Use in pipeline
+let pipeline = ComputePipeline::new()
+    .add_op(SquareOp)
+    .add_op(ReLUOp); // Chain operations
+```
+
+---
+
+## Domain Heads
+
+Domain heads **extract specific modalities** from the memory pool.
+
+### DomainHead Trait
+
+```rust
+pub trait DomainHead: Send + Sync {
+    /// Extract modality from pool
+    fn extract(&self, pool: &UniversalMemoryPool) -> Result<Modality>;
+
+    /// Optional name for debugging
+    fn name(&self) -> &str {
+        "UnnamedDomainHead"
+    }
+}
+```
+
+### Modality Enum
+
+```rust
+pub enum Modality {
+    /// Normalized f32 values
+    Normalized(Vec<f32>),
+
+    /// Filtered f32 values
+    Filtered(Vec<f32>),
+
+    /// Aggregate statistics
+    Aggregated {
+        min: f32,
+        max: f32,
+        sum: f32,
+        count: usize,
+    },
+
+    /// Raw bytes
+    Raw(Vec<u8>),
+}
+```
+
+### Built-in Domain Heads
+
+#### NormalizeDomainHead (Min-Max Scaling)
+
+```rust
+pub struct NormalizeDomainHead {
+    min: f32,
+    max: f32,
+}
+
+impl NormalizeDomainHead {
+    pub fn new(min: f32, max: f32) -> Self;
+}
+
+impl DomainHead for NormalizeDomainHead {
+    fn extract(&self, pool: &UniversalMemoryPool) -> Result<Modality> {
+        // Filter f32-compatible blocks
+        let f32_blocks: Vec<_> = pool.blocks()
+            .iter()
+            .filter(|b| b.len() % 4 == 0)
+            .collect();
+
+        let mut normalized_data = Vec::new();
+
+        for block in f32_blocks {
+            let data = block.data().ok_or_else(|| {
+                ProcessorError::InvalidOperation("Normalize requires CPU-resident block".to_string())
+            })?;
+
+            let input: &[f32] = bytemuck::cast_slice(data);
+
+            // Normalize: (x - min) / (max - min)
+            let scale = 1.0 / (self.max - self.min);
+            let output: Vec<f32> = input.iter().map(|&x| (x - self.min) * scale).collect();
+
+            normalized_data.extend_from_slice(&output);
+        }
+
+        Ok(Modality::Normalized(normalized_data))
+    }
+
+    fn name(&self) -> &str {
+        "Normalize"
+    }
+}
+```
+
+**Usage**:
+```rust
+let normalizer = NormalizeDomainHead::new(0.0, 255.0);
+let modality = normalizer.extract(&context.pool)?;
+
+if let Modality::Normalized(values) = modality {
+    println!("Normalized {} values", values.len());
+}
+```
+
+#### FilterDomainHead (Filtering Operations)
+
+```rust
+pub enum FilterType {
+    PositiveOnly,
+    Clip { min: f32, max: f32 },
+    AboveThreshold(f32),
+}
+
+pub struct FilterDomainHead {
+    filter: FilterType,
+}
+
+impl FilterDomainHead {
+    pub fn positive_only() -> Self;
+    pub fn clip(min: f32, max: f32) -> Self;
+    pub fn above_threshold(threshold: f32) -> Self;
+}
+
+impl DomainHead for FilterDomainHead {
+    fn extract(&self, pool: &UniversalMemoryPool) -> Result<Modality> {
+        let f32_blocks: Vec<_> = pool.blocks()
+            .iter()
+            .filter(|b| b.len() % 4 == 0)
+            .collect();
+
+        let mut filtered_data = Vec::new();
+
+        for block in f32_blocks {
+            let data = block.data().ok_or_else(|| {
+                ProcessorError::InvalidOperation("Filter requires CPU-resident block".to_string())
+            })?;
+
+            let input: &[f32] = bytemuck::cast_slice(data);
+
+            // Apply filter
+            let output: Vec<f32> = match self.filter {
+                FilterType::PositiveOnly => {
+                    input.iter().map(|&x| x.max(0.0)).collect()
+                }
+                FilterType::Clip { min, max } => {
+                    input.iter().map(|&x| x.clamp(min, max)).collect()
+                }
+                FilterType::AboveThreshold(threshold) => {
+                    input.iter().map(|&x| x.max(threshold)).collect()
+                }
+            };
+
+            filtered_data.extend_from_slice(&output);
+        }
+
+        Ok(Modality::Filtered(filtered_data))
+    }
+
+    fn name(&self) -> &str {
+        "Filter"
+    }
+}
+```
+
+**Usage**:
+```rust
+let filter = FilterDomainHead::clip(0.0, 100.0);
+let modality = filter.extract(&context.pool)?;
+
+if let Modality::Filtered(values) = modality {
+    println!("Filtered {} values", values.len());
+}
+```
+
+#### AggregateDomainHead (Reductions)
+
+```rust
+pub struct AggregateDomainHead;
+
+impl DomainHead for AggregateDomainHead {
+    fn extract(&self, pool: &UniversalMemoryPool) -> Result<Modality> {
+        let f32_blocks: Vec<_> = pool.blocks()
+            .iter()
+            .filter(|b| b.len() % 4 == 0)
+            .collect();
+
+        let mut global_min = f32::INFINITY;
+        let mut global_max = f32::NEG_INFINITY;
+        let mut global_sum = 0.0f32;
+        let mut global_count = 0usize;
+
+        for block in f32_blocks {
+            let data = block.data().ok_or_else(|| {
+                ProcessorError::InvalidOperation("Aggregate requires CPU-resident block".to_string())
+            })?;
+
+            let input: &[f32] = bytemuck::cast_slice(data);
+
+            // Compute reductions
+            let block_min = input.iter().copied().fold(f32::INFINITY, f32::min);
+            let block_max = input.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let block_sum: f32 = input.iter().sum();
+
+            global_min = global_min.min(block_min);
+            global_max = global_max.max(block_max);
+            global_sum += block_sum;
+            global_count += input.len();
+        }
+
+        Ok(Modality::Aggregated {
+            min: global_min,
+            max: global_max,
+            sum: global_sum,
+            count: global_count,
+        })
+    }
+
+    fn name(&self) -> &str {
+        "Aggregate"
+    }
+}
+```
+
+**Usage**:
+```rust
+let aggregator = AggregateDomainHead;
+let modality = aggregator.extract(&context.pool)?;
+
+if let Modality::Aggregated { min, max, sum, count } = modality {
+    let mean = sum / count as f32;
+    println!("Stats: min={}, max={}, mean={}", min, max, mean);
+}
+```
+
+#### RawDomainHead (Raw Bytes)
+
+```rust
+pub struct RawDomainHead;
+
+impl DomainHead for RawDomainHead {
+    fn extract(&self, pool: &UniversalMemoryPool) -> Result<Modality> {
+        use rayon::prelude::*;
+
+        // Parallel extraction of all CPU-resident blocks
+        let all_data: Vec<Vec<u8>> = pool.blocks()
+            .par_iter()
+            .filter_map(|block| block.data().map(|d| d.to_vec()))
+            .collect();
+
+        // Flatten into single Vec
+        let raw_data: Vec<u8> = all_data.into_iter().flatten().collect();
+
+        Ok(Modality::Raw(raw_data))
+    }
+
+    fn name(&self) -> &str {
+        "Raw"
+    }
+}
+```
+
+**Usage**:
+```rust
+let raw_extractor = RawDomainHead;
+let modality = raw_extractor.extract(&context.pool)?;
+
+if let Modality::Raw(bytes) = modality {
+    println!("Extracted {} raw bytes", bytes.len());
+}
+```
+
+---
+
+## Advanced Patterns
+
+### Pattern 1: Multi-Stage Pipeline
+
+```rust
+// Stage 1: Preprocessing
+let preprocess = ComputePipeline::new()
+    .add_op(ScalarAddOp { offset: -128.0 })  // Center around zero
+    .add_op(ScalarMulOp { scale: 1.0 / 128.0 }); // Normalize to [-1, 1]
+
+let context1 = preprocess.execute(data, 10)?;
+
+// Stage 2: Apply nonlinearity
+let nonlinear = ComputePipeline::new()
+    .add_op(ReLUOp); // or custom activation
+
+// Extract data from stage 1, process in stage 2
+let raw = RawDomainHead.extract(&context1.pool)?;
+if let Modality::Raw(bytes) = raw {
+    let context2 = nonlinear.execute(bytes, 10)?;
+
+    // Final extraction
+    let result = NormalizeDomainHead::new(-1.0, 1.0).extract(&context2.pool)?;
+}
+```
+
+### Pattern 2: Conditional Processing
+
+```rust
+// Extract statistics first
+let stats = AggregateDomainHead.extract(&pool)?;
+
+if let Modality::Aggregated { min, max, .. } = stats {
+    // Decide processing based on data range
+    let pipeline = if max - min > 100.0 {
+        // Large range: normalize aggressively
+        ComputePipeline::new()
+            .add_op(ClipOp { min, max })
+            .add_op(ScalarMulOp { scale: 1.0 / (max - min) })
+    } else {
+        // Small range: mild normalization
+        ComputePipeline::new()
+            .add_op(ScalarMulOp { scale: 2.0 })
+    };
+
+    let context = pipeline.execute(data, 10)?;
+}
+```
+
+### Pattern 3: Parallel Domain Extraction
+
+```rust
+use rayon::prelude::*;
+
+// Define multiple domain heads
+let domain_heads: Vec<Box<dyn DomainHead>> = vec![
+    Box::new(NormalizeDomainHead::new(0.0, 255.0)),
+    Box::new(FilterDomainHead::positive_only()),
+    Box::new(AggregateDomainHead),
+];
+
+// Extract all modalities in parallel
+let modalities: Vec<Modality> = domain_heads
+    .par_iter()
+    .map(|head| head.extract(&pool))
+    .collect::<Result<Vec<_>>>()?;
+
+// Process each modality
+for (i, modality) in modalities.iter().enumerate() {
+    println!("Modality {}: {:?}", i, modality);
+}
+```
+
+---
+
+## Performance Optimization
+
+### Zero-Copy Verification
+
+All StreamOps and domain heads operate with **zero-copy semantics**:
+
+```rust
+// chunk.data() returns &[u8] pointing to Arc data
+let data = chunk.data().unwrap(); // No copy!
+
+// bytemuck::cast_slice is zero-copy reinterpretation
+let floats: &[f32] = bytemuck::cast_slice(data); // No copy!
+
+// Operations create new Vec (necessary for result)
+let result: Vec<f32> = floats.iter().map(|&x| x * 2.0).collect(); // Allocates
+
+// Result converted back to Arc
+let arc: Arc<[u8]> = bytemuck::cast_slice(&result).to_vec().into(); // Final allocation
+```
+
+**Allocations per operation**: 2 (result Vec, Arc conversion)
+**Zero-copy reads**: Arc deref, bytemuck cast
+
+### Parallelism Opportunities
+
+**Chunk-level parallelism**:
+```rust
+use rayon::prelude::*;
+
+// Process chunks in parallel
+let processed_chunks: Vec<_> = chunks
+    .par_iter()
+    .map(|chunk| my_op.process(&mut ctx, chunk))
+    .collect::<Result<Vec<_>>>()?;
+```
+
+**Block-level parallelism** (domain heads):
+```rust
+// Extract from blocks in parallel
+let results: Vec<_> = pool.blocks()
+    .par_iter()
+    .filter_map(|block| block.data())
+    .map(|data| process_block(data))
+    .collect();
+```
+
+### Benchmark Results
+
+From integration tests ([simd_domain_heads_integration.rs:1-362](../../crates/hologram-memory-manager/tests/simd_domain_heads_integration.rs:1-362)):
+
+| Operation | Input Size | Time | Throughput |
+|-----------|------------|------|------------|
+| Normalize | 1000+ f32 | 13.5 µs | ~296 MB/s |
+| Filter (ReLU) | 1000+ f32 | 16.8 µs | ~238 MB/s |
+| Filter (Clip) | 1000+ f32 | 16.2 µs | ~247 MB/s |
+| Aggregate | 1000+ f32 | 28.7 µs | ~139 MB/s |
+
+**Conclusion**: Sub-millisecond performance for typical workloads.
+
+---
+
+## Summary
+
+The streaming pipeline in hologram-memory-manager provides:
+
+1. **Gauge-Driven Chunking**: Primorial-based periodicities with automatic gauge assignment
+2. **Compute Pipeline**: Chain operations (ReLU, ScalarMul, Clip, custom) with zero-copy
+3. **StreamOp Trait**: Extensible operation interface for scalar transformations
+4. **Domain Heads**: Modality extraction (normalize, filter, aggregate, raw)
+5. **Zero-Copy**: Direct Arc slice access throughout pipeline
+6. **Performance**: Sub-microsecond operations, parallel execution via Rayon
+
+The design prioritizes **simplicity** (scalar operations), **correctness** (type-safe transformations), and **performance** (zero-copy, parallel).
+
+**For architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).**
+**For backend integration, see [BACKENDS.md](BACKENDS.md).**
+**For implementation details, see [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).**

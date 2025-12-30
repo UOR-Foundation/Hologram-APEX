@@ -1,0 +1,304 @@
+---
+title: "WebGPU Performance Benchmarking Guide"
+description: "WebGPU Performance Benchmarking Guide documentation"
+---
+
+# WebGPU Performance Benchmarking Guide
+
+**Status**: Phase 4 - Hybrid Dispatch & Performance Optimization
+**Date**: 2025-11-04
+**Version**: 1.0.0
+
+## Overview
+
+This guide explains how to benchmark WebGPU operations to measure actual performance gains, validate dispatch heuristics, and identify GPU/CPU crossover points.
+
+## Benchmarking Suite Components
+
+### 1. CPU Baseline Benchmarks (Criterion)
+
+**File**: `/workspace/crates/hologram-backends/benches/webgpu_baseline.rs`
+
+**Purpose**: Establish CPU performance baselines for comparison with GPU execution.
+
+**Operations Tested**:
+- **Binary operations**: vector_add, vector_mul, vector_min, vector_max, vector_sub, vector_div
+- **Unary operations**: vector_abs, vector_exp, vector_log, vector_sqrt, vector_sigmoid, vector_tanh
+- **Reduction operations**: reduce_sum
+- **Dispatch thresholds**: Tests specifically at threshold boundaries (512, 1024, 2048)
+
+**Test Sizes**: 100, 1K, 10K, 100K, 1M elements
+
+### 2. WebGPU Performance Tests (WASM)
+
+**File**: `/workspace/crates/hologram-backends/tests/webgpu_performance_test.rs`
+
+**Purpose**: Measure actual GPU execution times in browser environment.
+
+**Operations Tested**: Same as CPU baseline
+
+**Output Format**: CSV-style console logs with timing data
+
+## Running the Benchmarks
+
+### Step 1: Run CPU Baseline Benchmarks
+
+```bash
+# Run all CPU baseline benchmarks
+cargo bench --bench webgpu_baseline
+
+# Run specific benchmark groups
+cargo bench --bench webgpu_baseline -- cpu_binary_ops
+cargo bench --bench webgpu_baseline -- cpu_unary_ops
+cargo bench --bench webgpu_baseline -- cpu_reduce_ops
+cargo bench --bench webgpu_baseline -- cpu_dispatch_thresholds
+
+# Save results to file
+cargo bench --bench webgpu_baseline > cpu_baseline_results.txt
+```
+
+**Output Location**: `target/criterion/`
+
+### Step 2: Run WebGPU Performance Tests
+
+```bash
+# Run WebGPU performance tests in Chrome
+wasm-pack test --chrome crates/hologram-backends --features webgpu
+
+# Run specific test
+wasm-pack test --chrome crates/hologram-backends --features webgpu --test webgpu_performance_test -- perf_binary_operations
+
+# View console output for timing data
+# (Open Chrome DevTools Console to see performance metrics)
+```
+
+**Note**: WebGPU tests require a browser with WebGPU support (Chrome 113+, Edge 113+)
+
+### Step 3: Compare Results
+
+1. **CPU Results**: Found in `target/criterion/`
+2. **GPU Results**: Printed to browser console during WASM tests
+3. **Manual Comparison**: Calculate speedup ratios (CPU time / GPU time)
+
+## Interpreting Results
+
+### Criterion Output Format
+
+```
+cpu_binary_ops/vector_add/100
+                        time:   [123.45 ns 125.67 ns 127.89 ns]
+                        thrpt:  [780.23 Melem/s 795.45 Melem/s 810.12 Melem/s]
+```
+
+**Key Metrics**:
+- `time`: Execution time (mean, confidence interval)
+- `thrpt`: Throughput in millions of elements per second
+
+### WebGPU Console Output Format
+
+```
+vector_add, 1000, 450.23, 2.22
+```
+
+**Format**: `operation, size, time_us, throughput_Melem/s`
+
+### Calculating Speedup
+
+```
+Speedup = CPU Time / GPU Time
+
+Example:
+  CPU: vector_add(1M) = 10,000 us
+  GPU: vector_add(1M) = 500 us
+  Speedup = 10,000 / 500 = 20x
+```
+
+### Expected Results (Based on Research)
+
+| Operation | Size | CPU Time | GPU Time | Speedup | Crossover |
+|-----------|------|----------|----------|---------|-----------|
+| vector_add | 100 | 0.5 us | 100 us | **0.005x** ⚠️ | CPU better |
+| vector_add | 1K | 5 us | 120 us | **0.04x** ⚠️ | CPU better |
+| vector_add | 10K | 50 us | 150 us | **0.33x** ⚠️ | CPU better |
+| vector_add | 100K | 500 us | 200 us | **2.5x** ✅ | GPU better |
+| vector_add | 1M | 5,000 us | 250 us | **20x** ✅ | GPU better |
+
+**Key Insight**: GPU has ~100-150us kernel launch overhead, making CPU faster for small operations.
+
+## Validating Dispatch Heuristics
+
+### Default Thresholds (from dispatch.rs)
+
+```rust
+binary_gpu_threshold: 1024,      // Binary operations (add, mul, min, max, sub, div)
+unary_gpu_threshold: 1024,       // Unary operations (abs, exp, log, sqrt, sigmoid, tanh)
+reduction_gpu_threshold: 512,    // Reduction operations (sum, min, max)
+multipass_gpu_threshold: 256,    // Multi-pass operations (softmax)
+memory_gpu_threshold: 2048,      // Memory operations (copy, mark, swap)
+```
+
+### Validation Process
+
+1. **Run threshold benchmarks**:
+   ```bash
+   cargo bench --bench webgpu_baseline -- dispatch_thresholds
+   ```
+
+2. **Compare CPU times at threshold boundaries**:
+   - Below threshold (512)
+   - At threshold (1024)
+   - Above threshold (2048)
+
+3. **Check WebGPU times** at same sizes
+
+4. **Calculate crossover point**: Size where `GPU Time < CPU Time`
+
+### Adjusting Thresholds
+
+If crossover points differ from defaults:
+
+```rust
+// In dispatch.rs
+pub struct DispatchConfig {
+    pub binary_gpu_threshold: usize,    // Adjust based on results
+    pub unary_gpu_threshold: usize,     // ...
+    pub reduction_gpu_threshold: usize,
+    pub multipass_gpu_threshold: usize,
+    pub memory_gpu_threshold: usize,
+}
+```
+
+**Example Adjustment**:
+```rust
+// If CPU is faster up to 2048 elements
+let config = DispatchConfig {
+    binary_gpu_threshold: 2048,  // Increased from 1024
+    ..Default::default()
+};
+```
+
+## Performance Analysis Checklist
+
+### CPU Baseline Analysis
+
+- [ ] Verify CPU times scale linearly with size
+- [ ] Check throughput consistency across sizes
+- [ ] Identify operation complexity (exp/log slower than add/mul)
+- [ ] Document CPU performance characteristics
+
+### GPU Performance Analysis
+
+- [ ] Measure kernel launch overhead (~100-150us)
+- [ ] Verify GPU times plateau for small sizes (overhead-dominated)
+- [ ] Check GPU throughput for large sizes (compute-bound)
+- [ ] Identify optimal workgroup configurations
+
+### Dispatch Validation
+
+- [ ] Calculate actual crossover points for each operation type
+- [ ] Compare with default thresholds
+- [ ] Adjust thresholds if needed
+- [ ] Document final recommendations
+
+### Performance Gains
+
+- [ ] Calculate speedup ratios for all operations
+- [ ] Identify best-case speedups (20x+)
+- [ ] Identify worst-case scenarios (CPU better)
+- [ ] Document GPU efficiency metrics
+
+## Example Performance Report
+
+### Binary Operations (vector_add)
+
+| Size | CPU (us) | GPU (us) | Speedup | Recommendation |
+|------|----------|----------|---------|----------------|
+| 100 | 0.5 | 120 | 0.004x | ❌ Use CPU |
+| 1K | 5 | 125 | 0.04x | ❌ Use CPU |
+| 10K | 50 | 140 | 0.36x | ❌ Use CPU |
+| 100K | 500 | 180 | 2.78x | ✅ Use GPU |
+| 1M | 5,000 | 250 | 20x | ✅ Use GPU |
+
+**Crossover Point**: ~50K elements
+**Current Threshold**: 1,024 elements (conservative)
+**Recommendation**: Consider increasing to 16K-32K for optimal performance
+
+### Unary Operations (vector_exp)
+
+| Size | CPU (us) | GPU (us) | Speedup | Recommendation |
+|------|----------|----------|---------|----------------|
+| 100 | 2.0 | 130 | 0.015x | ❌ Use CPU |
+| 1K | 20 | 135 | 0.15x | ❌ Use CPU |
+| 10K | 200 | 150 | 1.33x | ⚠️ Marginal |
+| 100K | 2,000 | 200 | 10x | ✅ Use GPU |
+| 1M | 20,000 | 300 | 67x | ✅ Use GPU |
+
+**Crossover Point**: ~8K elements
+**Current Threshold**: 1,024 elements (too aggressive)
+**Recommendation**: Increase to 4K-8K for better efficiency
+
+## Automation Recommendations
+
+### Future Work: Automated Benchmarking
+
+1. **CI Integration**: Run benchmarks on every commit
+2. **Performance Regression Detection**: Alert on slowdowns
+3. **Adaptive Tuning**: Automatically adjust thresholds based on device
+4. **Cross-Browser Testing**: Chrome, Edge, Firefox (when available)
+
+### Benchmark Result Storage
+
+```bash
+# Store CPU results
+cargo bench --bench webgpu_baseline -- --save-baseline cpu_baseline_v1
+
+# Compare with previous baseline
+cargo bench --bench webgpu_baseline -- --baseline cpu_baseline_v1
+```
+
+## Troubleshooting
+
+### Issue: Criterion Benchmarks Take Too Long
+
+**Solution**: Run specific groups or reduce warm-up/measurement times:
+```bash
+cargo bench --bench webgpu_baseline -- --warm-up-time 1 --measurement-time 3
+```
+
+### Issue: WebGPU Tests Fail in Browser
+
+**Checks**:
+1. WebGPU support: `navigator.gpu` in console
+2. Chrome version: 113+ required
+3. Enable WebGPU: `chrome://flags/#enable-unsafe-webgpu`
+
+### Issue: Performance Varies Between Runs
+
+**Causes**:
+- Browser background activity
+- GPU power management
+- CPU thermal throttling
+- Other GPU applications running
+
+**Solution**: Close other applications, run multiple times, take median
+
+## References
+
+- [Criterion.rs Documentation](https://bheisler.github.io/criterion.rs/book/)
+- [wasm-bindgen-test Guide](https://rustwasm.github.io/wasm-bindgen/wasm-bindgen-test/)
+- [WebGPU Specification](https://www.w3.org/TR/webgpu/)
+- [WebGPU Performance Best Practices](https://toji.dev/webgpu-best-practices/performance)
+
+## Next Steps
+
+After completing benchmarking:
+
+1. **Document Results**: Update WEBGPU_IMPLEMENTATION.md with actual measurements
+2. **Tune Thresholds**: Adjust dispatch.rs based on crossover points
+3. **Optimize Workgroups**: Experiment with sizes (64, 128, 256, 512)
+4. **Memory Optimization**: Implement staging and buffer pooling
+5. **Production Deployment**: Integrate validated thresholds into executor
+
+---
+
+**Status**: Benchmarking suite implemented, ready for performance measurement phase.

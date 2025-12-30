@@ -1,0 +1,51 @@
+{
+  "name": "Hologramapp Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "containerEnv": {
+    "CARGO_TERM_COLOR": "always",
+    "SQLITE3_PATH": "/usr/bin/sqlite3",
+    "ZIG_PATH": "/usr/local/bin/zig",
+    "PYTHON_VARIANT": "1-3.11-bullseye",
+    "RUST_VERSION": "stable",
+    "NODE_VERSION": "20",
+    "LEAN_TOOLCHAIN": "leanprover/lean4:stable",
+    "USERNAME": "vscode"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "rust-analyzer.checkOnSave": true,
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.cargo.features": "all",
+        "files.watcherExclude": {
+          "**/target/**": true,
+          "**/.venv/**": true
+        },
+        "python.defaultInterpreterPath": "/usr/local/python/current/bin/python",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/usr/bin/zsh"
+          }
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.cwd": "/workspace"
+      },
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "tamasfe.even-better-toml",
+        "fill-labs.dependi",
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

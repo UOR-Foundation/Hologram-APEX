@@ -1,0 +1,286 @@
+---
+title: "Hologram ONNX Compiler Documentation"
+description: "Hologram ONNX Compiler Documentation documentation"
+---
+
+# Hologram ONNX Compiler Documentation
+
+**Status**: Active Development
+**Last Updated**: 2025-11-17
+
+## Overview
+
+The Hologram ONNX Compiler transforms ONNX models into a MoonshineHRM-based format that enables:
+- **Zero-copy loading** (~100µs via mmap)
+- **O(1) runtime** inference (pure hash table lookups)
+- **SIMD-accelerated** execution
+- **All computation at compile-time** (no runtime overhead)
+
+## Architecture
+
+The compiler uses a **4-pass compilation pipeline**:
+
+```
+ONNX Model (.onnx)
+    ↓
+┌─────────────────────────────────────────────┐
+│ Pass 1: Collection & Analysis        ✅     │
+│ - Parse ONNX protobuf                       │
+│ - Extract unique weight values              │
+│ - Analyze operations                        │
+│ - Calculate optimal pattern counts          │
+│ Output: CollectionManifest                  │
+└─────────────────┬───────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────┐
+│ Pass 2: Embedding Cache               🔲    │
+│ - Embed unique values using HRM Atlas       │
+│ - Build reusable GriessVector cache         │
+│ Output: EmbeddingCache                      │
+└─────────────────┬───────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────┐
+│ Pass 3: Pre-Computation               🔲    │
+│ - Compute results in embedded space         │
+│ - Factorize → addresses                     │
+│ - Build perfect hash tables                 │
+│ Output: FactorizedResults                   │
+└─────────────────┬───────────────────────────┘
+                  ↓
+┌─────────────────────────────────────────────┐
+│ Pass 4: Binary Generation             🔲    │
+│ - Serialize to SIMD-aligned binary          │
+│ - Memory-map friendly layout                │
+│ Output: .mshr binary                        │
+└─────────────────────────────────────────────┘
+                  ↓
+    Compiled Model (.mshr)
+```
+
+## Key Features
+
+### 1. **Value Reuse Optimization**
+
+Pass 1 deduplicates weight values across the entire model:
+- A model with 100M parameters might have only 50K unique values
+- Only 50K embeddings are computed (2000x reduction!)
+- Massive compilation time savings
+
+### 2. **Expanded Address Space**
+
+- Original: 1.18M addresses
+- Expanded: **773 billion addresses**
+- **Zero runtime penalty** (still O(1) arithmetic)
+
+### 3. **O(1) Runtime Inference**
+
+Every operation is O(1):
+- Hash input: ~10ns (SIMD)
+- Lookup address: ~5ns (perfect hash)
+- Load result: ~20ns (SIMD memcpy)
+- **Total: ~35ns per operation**
+
+### 4. **Discretization Strategies**
+
+Per-operation input quantization:
+- **MatMul/Gemm**: INT8 quantization or k-means clustering
+- **Conv**: INT8 quantization (spatial locality)
+- **Element-wise**: Hash buckets
+
+## Directory Structure
+
+```
+docs/hologram-onnx-compiler/
+├── README.md                    # This file
+├── ARCHITECTURE.md              # Detailed architecture
+├── GRAPH_IR_REFACTORING.md      # Graph IR petgraph migration
+├── PASS1_COLLECTION.md          # Pass 1 documentation
+├── PASS2_EMBEDDING.md           # Pass 2 documentation
+├── PASS3_PRECOMPUTATION.md      # Pass 3 documentation
+├── PASS4_BINARY.md              # Pass 4 documentation
+├── RUNTIME.md                   # Runtime execution
+├── BINARY_FORMAT.md             # .mshr format specification
+├── TODO.md                      # Current task list
+└── EXAMPLES.md                  # Usage examples
+```
+
+## Quick Start
+
+### Compile an ONNX Model
+
+```rust
+use hologram_onnx_compiler::hrm::{Pass1Collector, Pass2Embedder, Pass3PreComputer, Pass4BinaryGenerator};
+
+// Load ONNX model
+let onnx_bytes = std::fs::read("model.onnx")?;
+
+// Pass 1: Collect and analyze
+let mut pass1 = Pass1Collector::new()
+    .with_memory_budget(10 * 1024 * 1024 * 1024)  // 10GB
+    .with_accuracy_target(0.99)                     // 99%
+    .with_verbose(true);
+
+let manifest = pass1.collect_and_analyze(&onnx_bytes, None)?;
+
+// Pass 2: Embed unique values
+let atlas = Atlas::with_cache()?;
+let mut pass2 = Pass2Embedder::new(atlas);
+let cache = pass2.embed_unique_values(&manifest).await?;
+
+// Pass 3: Pre-compute results
+let mut pass3 = Pass3PreComputer::new(atlas);
+let factorized = pass3.precompute_all_results(&manifest, &cache).await?;
+
+// Pass 4: Generate binary
+let pass4 = Pass4BinaryGenerator::new();
+let output_path = pass4.generate_binary(&manifest, &cache, &factorized, Path::new("model.mshr"))?;
+
+println!("Compiled model: {}", output_path.display());
+```
+
+### Load and Execute
+
+```rust
+use hologram_onnx_runtime::MoonshineRuntime;
+
+// Load compiled model (O(1) mmap)
+let runtime = MoonshineRuntime::load("model.mshr")?;
+
+// Run inference (O(1) pure lookup)
+let outputs = runtime.infer(&inputs)?;
+```
+
+## Performance Targets
+
+### Compilation Time
+
+| Pass | Typical Time | Notes |
+|------|-------------|-------|
+| Pass 1 | Seconds to minutes | ONNX parsing + analysis |
+| Pass 2 | Minutes to hours | Embedding unique values |
+| Pass 3 | **Hours to days** | Pre-computing all results (longest!) |
+| Pass 4 | Seconds to minutes | Binary serialization |
+| **Total** | **1-48 hours** | Depends on model size and pattern count |
+
+### Runtime Performance
+
+| Metric | Target | Measured |
+|--------|--------|----------|
+| Loading | <100µs | TBD |
+| Per-operation | ~35ns | TBD |
+| Throughput | Millions ops/sec | TBD |
+
+### Memory Usage
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| Atlas | ~200MB | Shared across all models |
+| Address Space | 1-10GB | Model-specific |
+| Hash Tables | ~100MB | Per model |
+
+## Graph Optimization Infrastructure
+
+The compiler uses a graph-based intermediate representation (IR) built on [petgraph](https://crates.io/crates/petgraph) for ONNX model analysis and optimization:
+
+### Key Features
+
+- **StableGraph**: Industry-standard graph library with stable node indices
+- **Builder Pattern**: Ergonomic API for graph construction
+- **Optimization Passes**: Dead Code Elimination, Common Subexpression Elimination, Arithmetic Simplification, Constant Folding
+- **Type Safety**: `NodeIndex` prevents index confusion
+- **Rich Algorithms**: Built-in topological sort, cycle detection, traversal
+
+### Usage Example
+
+```rust
+use hologram_onnx_compiler::hrm::graph::HologramGraph;
+
+let mut graph = HologramGraph::new();
+
+// Ergonomic builder pattern
+let const1 = graph.add_op("Constant")
+    .name("my_constant")
+    .finish();
+
+let add = graph.add_op("Add")
+    .name("my_add")
+    .input(const1, 0, 0)
+    .input(const1, 0, 1)
+    .finish();
+
+// Run optimization passes
+use hologram_onnx_compiler::hrm::GraphOptimizer;
+
+let optimizer = GraphOptimizer::new()
+    .with_dead_code_elimination()
+    .with_common_subexpression_elimination()
+    .with_arithmetic_elimination();
+
+let stats = optimizer.optimize(&mut graph)?;
+println!("Removed {} nodes", stats.nodes_removed);
+```
+
+See [GRAPH_IR_REFACTORING.md](./GRAPH_IR_REFACTORING.md) for detailed documentation on the graph IR architecture.
+
+## Implementation Status
+
+### ✅ Completed
+
+- [x] Core data structures (CollectionManifest, EmbeddingCache, etc.)
+- [x] Expanded address space (773B addresses, O(1) access)
+- [x] **Graph IR refactoring** (petgraph migration, builder pattern, optimization passes)
+- [x] **Pass 1: Collection & Analysis** (400+ lines, fully functional)
+- [x] ONNX parsing integration
+- [x] Value deduplication optimization
+- [x] Operation statistics
+- [x] Discretization strategy selection
+- [x] Pattern count optimization
+
+### 🔲 In Progress
+
+- [ ] **Pass 2: Embedding Cache** (next)
+- [ ] **Pass 3: Pre-Computation**
+- [ ] **Pass 4: Binary Generation**
+
+### 🔲 Planned
+
+- [ ] MoonshineRuntime (zero-copy loading)
+- [ ] SIMD-accelerated inference
+- [ ] WASM/WebGPU backend support
+- [ ] MoonshineHRMEmbed trait for operations
+- [ ] Integration tests
+- [ ] Benchmarks
+
+## Design Decisions
+
+### Q1: Why pre-compute everything at compile-time?
+
+**A**: To achieve O(1) runtime. Any runtime computation violates the O(1) guarantee.
+
+### Q2: Why discretize inputs?
+
+**A**: Cannot pre-compute infinite float32 values. Discretization (quantization, clustering, hashing) reduces input space to finite patterns.
+
+### Q3: How to handle dynamic batch sizes?
+
+**A**: Pre-compute for max batch size. Alternative: multiple binaries per batch size.
+
+### Q4: Why 773 billion addresses?
+
+**A**: Expanded from 1.18M to support large models. No runtime penalty (still O(1) arithmetic).
+
+## References
+
+- **MoonshineHRM Project**: `/workspace/docs/hrm/project.md`
+- **MoonshineHRM Status**: `/workspace/docs/hrm/moonshine-onnx-compiler-status.md`
+- **Hologram Core**: `/workspace/crates/hologram-core/`
+- **Atlas Core**: `/workspace/crates/atlas-core/`
+- **HRM Implementation**: `/workspace/crates/hologram-hrm/`
+
+## Contributing
+
+See implementation tasks in `TODO.md`.
+
+## License
+
+MIT OR Apache-2.0

@@ -1,0 +1,69 @@
+[1m[92m    Finished[0m `bench` profile [optimized] target(s) in 0.08s
+[1m[92m     Running[0m benches/webgpu_baseline.rs (target/release/deps/webgpu_baseline-96726d33c8071aca)
+Gnuplot not found, using plotters backend
+Benchmarking cpu_binary_ops/vector_add/100
+Benchmarking cpu_binary_ops/vector_add/100: Warming up for 3.0000 s
+Benchmarking cpu_binary_ops/vector_add/100: Collecting 100 samples in estimated 5.0000 s (642M iterations)
+Benchmarking cpu_binary_ops/vector_add/100: Analyzing
+cpu_binary_ops/vector_add/100
+                        time:   [7.7850 ns 7.8078 ns 7.8336 ns]
+                        thrpt:  [12.766 Gelem/s 12.808 Gelem/s 12.845 Gelem/s]
+                 change:
+                        time:   [-1.0091% -0.5903% -0.1498%] (p = 0.01 < 0.05)
+                        thrpt:  [+0.1500% +0.5938% +1.0194%]
+                        Change within noise threshold.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking cpu_binary_ops/vector_add/1000
+Benchmarking cpu_binary_ops/vector_add/1000: Warming up for 3.0000 s
+Benchmarking cpu_binary_ops/vector_add/1000: Collecting 100 samples in estimated 5.0002 s (99M iterations)
+Benchmarking cpu_binary_ops/vector_add/1000: Analyzing
+cpu_binary_ops/vector_add/1000
+                        time:   [50.406 ns 50.523 ns 50.642 ns]
+                        thrpt:  [19.746 Gelem/s 19.793 Gelem/s 19.839 Gelem/s]
+                 change:
+                        time:   [-1.7331% -1.1616% -0.6074%] (p = 0.00 < 0.05)
+                        thrpt:  [+0.6111% +1.1753% +1.7636%]
+                        Change within noise threshold.
+Found 6 outliers among 100 measurements (6.00%)
+  3 (3.00%) high mild
+  3 (3.00%) high severe
+Benchmarking cpu_binary_ops/vector_add/10000
+Benchmarking cpu_binary_ops/vector_add/10000: Warming up for 3.0000 s
+Benchmarking cpu_binary_ops/vector_add/10000: Collecting 100 samples in estimated 5.0002 s (7.5M iterations)
+Benchmarking cpu_binary_ops/vector_add/10000: Analyzing
+cpu_binary_ops/vector_add/10000
+                        time:   [649.83 ns 658.51 ns 666.96 ns]
+                        thrpt:  [14.993 Gelem/s 15.186 Gelem/s 15.389 Gelem/s]
+                 change:
+                        time:   [-9.6646% -7.7954% -5.9604%] (p = 0.00 < 0.05)
+                        thrpt:  [+6.3382% +8.4545% +10.699%]
+                        Performance has improved.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) low mild
+Benchmarking cpu_binary_ops/vector_add/100000
+Benchmarking cpu_binary_ops/vector_add/100000: Warming up for 3.0000 s
+Benchmarking cpu_binary_ops/vector_add/100000: Collecting 100 samples in estimated 5.0021 s (591k iterations)
+Benchmarking cpu_binary_ops/vector_add/100000: Analyzing
+cpu_binary_ops/vector_add/100000
+                        time:   [9.6601 µs 9.8826 µs 10.073 µs]
+                        thrpt:  [9.9278 Gelem/s 10.119 Gelem/s 10.352 Gelem/s]
+Found 14 outliers among 100 measurements (14.00%)
+  9 (9.00%) low severe
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+Benchmarking cpu_binary_ops/vector_add/1000000
+Benchmarking cpu_binary_ops/vector_add/1000000: Warming up for 3.0000 s
+Benchmarking cpu_binary_ops/vector_add/1000000: Collecting 100 samples in estimated 5.0626 s (50k iterations)
+Benchmarking cpu_binary_ops/vector_add/1000000: Analyzing
+cpu_binary_ops/vector_add/1000000
+                        time:   [100.68 µs 101.62 µs 102.39 µs]
+                        thrpt:  [9.7668 Gelem/s 9.8409 Gelem/s 9.9320 Gelem/s]
+Found 12 outliers among 100 measurements (12.00%)
+  3 (3.00%) low severe
+  2 (2.00%) low mild
+  3 (3.00%) high mild
+  4 (4.00%) high severe
+

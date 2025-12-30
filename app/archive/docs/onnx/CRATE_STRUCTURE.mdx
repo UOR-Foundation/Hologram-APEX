@@ -1,0 +1,1173 @@
+---
+title: "Hologram ONNX Crate Structure"
+description: "Hologram ONNX Crate Structure documentation"
+---
+
+# Hologram ONNX Crate Structure
+
+**Location**: `/workspace/hologram-sdk/rust/hologram-onnx`
+**Purpose**: Complete module layout and implementation guide for the hologram-onnx crate
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Directory Structure](#directory-structure)
+- [Module Breakdown](#module-breakdown)
+- [Public API](#public-api)
+- [Dependencies](#dependencies)
+- [Build Configuration](#build-configuration)
+- [Example Usage](#example-usage)
+
+---
+
+## Overview
+
+The `hologram-onnx` crate provides a complete ONNX runtime implementation optimized for hologram's canonical compilation architecture. It is organized as a peer crate to `hologram-ai` within the SDK:
+
+```
+hologram-sdk/rust/
+├── hologram-ai/          # Native building blocks and models
+├── hologram-onnx/        # ONNX runtime (NEW)
+├── hologram-models/      # High-level model APIs (future)
+└── hologram-model-server/ # Model serving infrastructure
+```
+
+---
+
+## Directory Structure
+
+```
+hologram-onnx/
+├── Cargo.toml           # Crate configuration and dependencies
+├── build.rs             # Build script (generate protobuf bindings)
+├── src/
+│   ├── lib.rs           # Public API and re-exports
+│   │
+│   ├── proto/           # Protobuf parsing
+│   │   ├── mod.rs
+│   │   ├── onnx.rs      # Generated from onnx.proto3 (via build.rs)
+│   │   └── parser.rs    # High-level parsing utilities
+│   │
+│   ├── graph/           # IR representation
+│   │   ├── mod.rs
+│   │   ├── graph.rs     # Graph, Node, ValueInfo structs
+│   │   ├── builder.rs   # Graph construction utilities
+│   │   └── analysis.rs  # Topological sort, lifetime analysis
+│   │
+│   ├── optimizer/       # Graph optimization passes
+│   │   ├── mod.rs
+│   │   ├── pass.rs      # OptimizationPass trait
+│   │   ├── constant_folding.rs
+│   │   ├── operator_fusion.rs
+│   │   ├── dead_code_elimination.rs
+│   │   ├── shape_inference.rs
+│   │   └── identity_elimination.rs
+│   │
+│   ├── ops/             # Operator implementations
+│   │   ├── mod.rs
+│   │   ├── registry.rs  # OperatorRegistry
+│   │   ├── operator.rs  # OnnxOperator trait
+│   │   │
+│   │   ├── math.rs      # Add, Sub, Mul, Div, etc.
+│   │   ├── activation.rs # Relu, Sigmoid, Tanh, Softmax
+│   │   ├── conv.rs      # Conv, ConvTranspose
+│   │   ├── pool.rs      # MaxPool, AveragePool
+│   │   ├── norm.rs      # BatchNorm, LayerNorm, GroupNorm
+│   │   ├── reduce.rs    # ReduceSum, ReduceMax, ReduceMin
+│   │   ├── tensor.rs    # Concat, Split, Reshape, Transpose
+│   │   ├── linalg.rs    # MatMul, Gemm
+│   │   ├── shape.rs     # Shape, Squeeze, Unsqueeze, Expand
+│   │   ├── gather.rs    # Gather, GatherElements, GatherND
+│   │   └── control_flow.rs # If, Loop (future)
+│   │
+│   ├── executor/        # Graph execution
+│   │   ├── mod.rs
+│   │   ├── executor.rs  # OnnxExecutor
+│   │   ├── execution_plan.rs # ExecutionPlan, ExecutionStep
+│   │   ├── value_cache.rs # Intermediate value management
+│   │   └── parallel.rs  # Parallel execution (future)
+│   │
+│   ├── types/           # Type system
+│   │   ├── mod.rs
+│   │   ├── dtype.rs     # DataType enum and conversions
+│   │   ├── tensor.rs    # OnnxTensor wrapper
+│   │   └── attribute.rs # AttributeValue enum
+│   │
+│   ├── weights/         # Weight loading
+│   │   ├── mod.rs
+│   │   ├── loader.rs    # WeightLoader trait
+│   │   ├── onnx.rs      # Load from ONNX format
+│   │   └── safetensors.rs # Load from SafeTensors
+│   │
+│   ├── model.rs         # High-level Model API
+│   ├── error.rs         # Error types (OnnxError, Result)
+│   └── utils.rs         # Utility functions
+│
+├── tests/               # Integration tests
+│   ├── integration_test.rs
+│   ├── operator_test.rs
+│   ├── graph_optimization_test.rs
+│   └── fixtures/
+│       └── models/      # Small ONNX models for testing
+│
+├── benches/             # Benchmarks
+│   ├── model_loading.rs
+│   └── inference.rs
+│
+├── examples/            # Usage examples
+│   ├── simple_model.rs
+│   ├── stable_diffusion.rs
+│   └── resnet.rs
+│
+└── proto/               # Protobuf schema files
+    └── onnx.proto3      # ONNX protobuf schema
+```
+
+---
+
+## Module Breakdown
+
+### 1. `lib.rs` - Public API
+
+```rust
+//! # hologram-onnx
+//!
+//! ONNX runtime implementation for hologram, optimized for canonical compilation.
+//!
+//! ## Example
+//!
+//! ```rust
+//! use hologram_onnx::{OnnxModel, OnnxExecutor};
+//! use hologram_core::Executor;
+//!
+//! // Load ONNX model
+//! let model = OnnxModel::load("model.onnx")?;
+//!
+//! // Create executor
+//! let exec = Executor::new()?;
+//! let mut onnx_exec = OnnxExecutor::new(model, exec)?;
+//!
+//! // Run inference
+//! let inputs = HashMap::from([("input", input_tensor)]);
+//! let outputs = onnx_exec.run(inputs)?;
+//! ```
+
+// Re-exports
+pub use error::{OnnxError, Result};
+pub use model::OnnxModel;
+pub use executor::OnnxExecutor;
+pub use types::{DataType, OnnxTensor, AttributeValue};
+pub use graph::Graph;
+
+// Modules
+pub mod proto;
+pub mod graph;
+pub mod optimizer;
+pub mod ops;
+pub mod executor;
+pub mod types;
+pub mod weights;
+pub mod error;
+
+mod model;
+mod utils;
+
+// Version information
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const ONNX_VERSION: &str = "1.16.0";  // Supported ONNX version
+```
+
+### 2. `proto/` - Protobuf Parsing
+
+#### `proto/mod.rs`
+
+```rust
+//! ONNX protobuf parsing and conversion
+
+pub mod onnx;  // Generated code
+pub mod parser;
+
+pub use parser::{parse_model, load_model};
+```
+
+#### `proto/parser.rs`
+
+```rust
+use crate::error::{OnnxError, Result};
+use crate::proto::onnx;
+use prost::Message;
+use std::path::Path;
+
+/// Parse an ONNX model from bytes
+pub fn parse_model(bytes: &[u8]) -> Result<onnx::ModelProto> {
+    onnx::ModelProto::decode(bytes)
+        .map_err(|e| OnnxError::ParseError(format!("Failed to parse ONNX model: {}", e)))
+}
+
+/// Load an ONNX model from file
+pub fn load_model(path: impl AsRef<Path>) -> Result<onnx::ModelProto> {
+    let bytes = std::fs::read(path.as_ref())
+        .map_err(|e| OnnxError::IoError(e))?;
+    parse_model(&bytes)
+}
+
+/// Validate ONNX model version
+pub fn validate_version(model: &onnx::ModelProto) -> Result<()> {
+    let ir_version = model.ir_version;
+    if ir_version < 3 || ir_version > 10 {
+        return Err(OnnxError::UnsupportedVersion(ir_version));
+    }
+    Ok(())
+}
+```
+
+### 3. `graph/` - IR Representation
+
+#### `graph/mod.rs`
+
+```rust
+//! Intermediate representation of ONNX computation graphs
+
+mod graph;
+mod builder;
+mod analysis;
+
+pub use graph::{Graph, Node, ValueInfo};
+pub use builder::GraphBuilder;
+pub use analysis::{topological_sort, analyze_lifetimes};
+```
+
+#### `graph/graph.rs`
+
+```rust
+use crate::types::{DataType, AttributeValue, OnnxTensor};
+use std::collections::HashMap;
+
+/// ONNX computation graph
+#[derive(Debug, Clone)]
+pub struct Graph {
+    pub name: String,
+    pub nodes: Vec<Node>,
+    pub inputs: Vec<ValueInfo>,
+    pub outputs: Vec<ValueInfo>,
+    pub initializers: HashMap<String, OnnxTensor>,
+    pub value_info: HashMap<String, ValueInfo>,
+}
+
+/// Graph node representing an operation
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub name: String,
+    pub op_type: String,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub attributes: HashMap<String, AttributeValue>,
+}
+
+/// Information about a tensor value
+#[derive(Debug, Clone)]
+pub struct ValueInfo {
+    pub name: String,
+    pub shape: Option<Vec<i64>>,  // None = dynamic dimension (-1)
+    pub dtype: DataType,
+}
+
+impl Graph {
+    /// Create graph from ONNX ModelProto
+    pub fn from_proto(proto: crate::proto::onnx::ModelProto) -> crate::Result<Self> {
+        let graph_proto = proto.graph.ok_or(crate::OnnxError::InvalidGraph(
+            "Model missing graph".to_string()
+        ))?;
+
+        // Convert nodes
+        let nodes = graph_proto.node.into_iter()
+            .map(Node::from_proto)
+            .collect::<crate::Result<Vec<_>>>()?;
+
+        // Convert inputs
+        let inputs = graph_proto.input.into_iter()
+            .map(ValueInfo::from_proto)
+            .collect::<crate::Result<Vec<_>>>()?;
+
+        // Convert outputs
+        let outputs = graph_proto.output.into_iter()
+            .map(ValueInfo::from_proto)
+            .collect::<crate::Result<Vec<_>>>()?;
+
+        // Convert initializers (weights)
+        let initializers = graph_proto.initializer.into_iter()
+            .map(|init| {
+                let name = init.name.clone();
+                let tensor = OnnxTensor::from_proto(init)?;
+                Ok((name, tensor))
+            })
+            .collect::<crate::Result<HashMap<_, _>>>()?;
+
+        // Build value_info map
+        let mut value_info = HashMap::new();
+        for value_proto in graph_proto.value_info {
+            let info = ValueInfo::from_proto(value_proto)?;
+            value_info.insert(info.name.clone(), info);
+        }
+
+        Ok(Self {
+            name: graph_proto.name,
+            nodes,
+            inputs,
+            outputs,
+            initializers,
+            value_info,
+        })
+    }
+
+    /// Get node that produces a given value
+    pub fn get_producer(&self, value_name: &str) -> Option<&Node> {
+        self.nodes.iter()
+            .find(|node| node.outputs.contains(&value_name.to_string()))
+    }
+
+    /// Get all consumers of a value
+    pub fn get_consumers(&self, value_name: &str) -> Vec<&Node> {
+        self.nodes.iter()
+            .filter(|node| node.inputs.contains(&value_name.to_string()))
+            .collect()
+    }
+}
+
+impl Node {
+    pub fn from_proto(proto: crate::proto::onnx::NodeProto) -> crate::Result<Self> {
+        let attributes = proto.attribute.into_iter()
+            .map(|attr| {
+                let name = attr.name;
+                let value = AttributeValue::from_proto(attr)?;
+                Ok((name, value))
+            })
+            .collect::<crate::Result<HashMap<_, _>>>()?;
+
+        Ok(Self {
+            name: proto.name,
+            op_type: proto.op_type,
+            inputs: proto.input,
+            outputs: proto.output,
+            attributes,
+        })
+    }
+}
+
+impl ValueInfo {
+    pub fn from_proto(proto: crate::proto::onnx::ValueInfoProto) -> crate::Result<Self> {
+        let type_proto = proto.r#type.ok_or(crate::OnnxError::InvalidGraph(
+            "ValueInfo missing type".to_string()
+        ))?;
+
+        let tensor_type = type_proto.tensor_type.ok_or(crate::OnnxError::InvalidGraph(
+            "Type missing tensor_type".to_string()
+        ))?;
+
+        let dtype = DataType::from_proto(tensor_type.elem_type)?;
+
+        let shape = tensor_type.shape.map(|shape_proto| {
+            shape_proto.dim.iter()
+                .map(|dim| dim.dim_value.unwrap_or(-1))
+                .collect()
+        });
+
+        Ok(Self {
+            name: proto.name,
+            shape,
+            dtype,
+        })
+    }
+}
+```
+
+#### `graph/analysis.rs`
+
+```rust
+use crate::graph::{Graph, Node};
+use crate::{OnnxError, Result};
+use std::collections::{HashMap, HashSet};
+
+/// Perform topological sort on graph nodes
+pub fn topological_sort(graph: &Graph) -> Result<Vec<usize>> {
+    let mut in_degree: HashMap<usize, usize> = HashMap::new();
+    let mut adjacency: HashMap<usize, Vec<usize>> = HashMap::new();
+
+    // Build adjacency list and in-degree map
+    for (i, node) in graph.nodes.iter().enumerate() {
+        in_degree.insert(i, 0);
+        adjacency.insert(i, Vec::new());
+    }
+
+    for (i, node) in graph.nodes.iter().enumerate() {
+        for input in &node.inputs {
+            // Find producer of this input
+            if let Some((producer_idx, _)) = graph.nodes.iter()
+                .enumerate()
+                .find(|(_, n)| n.outputs.contains(input))
+            {
+                adjacency.get_mut(&producer_idx).unwrap().push(i);
+                *in_degree.get_mut(&i).unwrap() += 1;
+            }
+        }
+    }
+
+    // Kahn's algorithm
+    let mut queue: Vec<usize> = in_degree.iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(&idx, _)| idx)
+        .collect();
+
+    let mut sorted = Vec::new();
+
+    while let Some(node_idx) = queue.pop() {
+        sorted.push(node_idx);
+
+        for &neighbor in &adjacency[&node_idx] {
+            let degree = in_degree.get_mut(&neighbor).unwrap();
+            *degree -= 1;
+            if *degree == 0 {
+                queue.push(neighbor);
+            }
+        }
+    }
+
+    if sorted.len() != graph.nodes.len() {
+        return Err(OnnxError::InvalidGraph(
+            "Graph contains cycles".to_string()
+        ));
+    }
+
+    Ok(sorted)
+}
+
+/// Analyze value lifetimes for memory optimization
+pub struct ValueLifetime {
+    pub first_use: usize,   // Node index
+    pub last_use: usize,    // Node index
+}
+
+pub fn analyze_lifetimes(graph: &Graph, topo_order: &[usize]) -> HashMap<String, ValueLifetime> {
+    let mut lifetimes = HashMap::new();
+
+    for (exec_order, &node_idx) in topo_order.iter().enumerate() {
+        let node = &graph.nodes[node_idx];
+
+        // Update first/last use for inputs
+        for input in &node.inputs {
+            lifetimes.entry(input.clone())
+                .and_modify(|lt: &mut ValueLifetime| lt.last_use = exec_order)
+                .or_insert(ValueLifetime {
+                    first_use: exec_order,
+                    last_use: exec_order,
+                });
+        }
+
+        // Record output creation
+        for output in &node.outputs {
+            lifetimes.insert(output.clone(), ValueLifetime {
+                first_use: exec_order,
+                last_use: exec_order,
+            });
+        }
+    }
+
+    lifetimes
+}
+```
+
+### 4. `optimizer/` - Graph Optimization
+
+#### `optimizer/mod.rs`
+
+```rust
+//! Graph optimization passes
+
+mod pass;
+mod constant_folding;
+mod operator_fusion;
+mod dead_code_elimination;
+mod shape_inference;
+mod identity_elimination;
+
+pub use pass::{OptimizationPass, Optimizer};
+pub use constant_folding::ConstantFoldingPass;
+pub use operator_fusion::OperatorFusionPass;
+pub use dead_code_elimination::DeadCodeEliminationPass;
+pub use shape_inference::ShapeInferencePass;
+pub use identity_elimination::IdentityEliminationPass;
+```
+
+#### `optimizer/pass.rs`
+
+```rust
+use crate::graph::Graph;
+use crate::Result;
+
+/// Trait for graph optimization passes
+pub trait OptimizationPass: Send + Sync {
+    /// Run the optimization pass
+    /// Returns true if the graph was modified
+    fn run(&self, graph: &mut Graph) -> Result<bool>;
+
+    /// Name of the pass (for debugging)
+    fn name(&self) -> &'static str;
+}
+
+/// Optimizer that runs multiple passes
+pub struct Optimizer {
+    passes: Vec<Box<dyn OptimizationPass>>,
+    max_iterations: usize,
+}
+
+impl Optimizer {
+    pub fn new() -> Self {
+        Self {
+            passes: Vec::new(),
+            max_iterations: 10,
+        }
+    }
+
+    pub fn with_pass(mut self, pass: Box<dyn OptimizationPass>) -> Self {
+        self.passes.push(pass);
+        self
+    }
+
+    pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = max_iterations;
+        self
+    }
+
+    /// Run all optimization passes until convergence
+    pub fn optimize(&self, graph: &mut Graph) -> Result<()> {
+        for iteration in 0..self.max_iterations {
+            let mut modified = false;
+
+            for pass in &self.passes {
+                let pass_modified = pass.run(graph)?;
+                modified |= pass_modified;
+
+                #[cfg(feature = "tracing")]
+                if pass_modified {
+                    tracing::debug!("Pass '{}' modified graph (iteration {})",
+                        pass.name(), iteration);
+                }
+            }
+
+            if !modified {
+                #[cfg(feature = "tracing")]
+                tracing::debug!("Optimizer converged after {} iterations", iteration + 1);
+                break;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for Optimizer {
+    fn default() -> Self {
+        Self::new()
+            .with_pass(Box::new(crate::optimizer::ShapeInferencePass))
+            .with_pass(Box::new(crate::optimizer::ConstantFoldingPass))
+            .with_pass(Box::new(crate::optimizer::DeadCodeEliminationPass))
+            .with_pass(Box::new(crate::optimizer::IdentityEliminationPass))
+    }
+}
+```
+
+#### `optimizer/constant_folding.rs`
+
+```rust
+use crate::optimizer::OptimizationPass;
+use crate::graph::Graph;
+use crate::Result;
+
+/// Evaluate constant operations at compile time
+pub struct ConstantFoldingPass;
+
+impl OptimizationPass for ConstantFoldingPass {
+    fn run(&self, graph: &mut Graph) -> Result<bool> {
+        let mut modified = false;
+
+        // Find nodes where all inputs are constants (initializers)
+        let constant_nodes: Vec<usize> = graph.nodes.iter()
+            .enumerate()
+            .filter(|(_, node)| {
+                node.inputs.iter().all(|input| {
+                    graph.initializers.contains_key(input) ||
+                    graph.inputs.iter().any(|inp| &inp.name == input)
+                })
+            })
+            .map(|(idx, _)| idx)
+            .collect();
+
+        for node_idx in constant_nodes.iter().rev() {
+            // Evaluate the node and replace with constant
+            // (Implementation would execute the operation and store result)
+            modified = true;
+        }
+
+        Ok(modified)
+    }
+
+    fn name(&self) -> &'static str {
+        "ConstantFolding"
+    }
+}
+```
+
+### 5. `ops/` - Operator Implementations
+
+#### `ops/mod.rs`
+
+```rust
+//! ONNX operator implementations
+
+mod operator;
+mod registry;
+
+pub mod math;
+pub mod activation;
+pub mod conv;
+pub mod pool;
+pub mod norm;
+pub mod reduce;
+pub mod tensor;
+pub mod linalg;
+pub mod shape;
+pub mod gather;
+
+pub use operator::OnnxOperator;
+pub use registry::OperatorRegistry;
+
+/// Create default operator registry with all standard operators
+pub fn create_standard_registry() -> OperatorRegistry {
+    let mut registry = OperatorRegistry::new();
+
+    // Math operators
+    registry.register("Add", Box::new(math::AddOp));
+    registry.register("Sub", Box::new(math::SubOp));
+    registry.register("Mul", Box::new(math::MulOp));
+    registry.register("Div", Box::new(math::DivOp));
+
+    // Activations
+    registry.register("Relu", Box::new(activation::ReluOp));
+    registry.register("Sigmoid", Box::new(activation::SigmoidOp));
+    registry.register("Tanh", Box::new(activation::TanhOp));
+    registry.register("Softmax", Box::new(activation::SoftmaxOp));
+
+    // Conv
+    registry.register("Conv", Box::new(conv::ConvOp));
+
+    // Pooling
+    registry.register("MaxPool", Box::new(pool::MaxPoolOp));
+    registry.register("AveragePool", Box::new(pool::AveragePoolOp));
+
+    // Normalization
+    registry.register("BatchNormalization", Box::new(norm::BatchNormOp));
+    registry.register("LayerNormalization", Box::new(norm::LayerNormOp));
+
+    // Reductions
+    registry.register("ReduceSum", Box::new(reduce::ReduceSumOp));
+    registry.register("ReduceMax", Box::new(reduce::ReduceMaxOp));
+
+    // Tensor ops
+    registry.register("Concat", Box::new(tensor::ConcatOp));
+    registry.register("Reshape", Box::new(tensor::ReshapeOp));
+    registry.register("Transpose", Box::new(tensor::TransposeOp));
+
+    // Linear algebra
+    registry.register("MatMul", Box::new(linalg::MatMulOp));
+    registry.register("Gemm", Box::new(linalg::GemmOp));
+
+    // Shape ops
+    registry.register("Squeeze", Box::new(shape::SqueezeOp));
+    registry.register("Unsqueeze", Box::new(shape::UnsqueezeOp));
+
+    // Gather
+    registry.register("Gather", Box::new(gather::GatherOp));
+
+    registry
+}
+```
+
+#### `ops/operator.rs`
+
+```rust
+use crate::types::{AttributeValue, OnnxTensor, DataType};
+use crate::Result;
+use hologram_core::Executor;
+use std::collections::HashMap;
+
+/// Trait for ONNX operators
+pub trait OnnxOperator: Send + Sync {
+    /// Execute the operator
+    fn execute(
+        &self,
+        exec: &Executor,
+        inputs: &[&OnnxTensor],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<OnnxTensor>>;
+
+    /// Infer output shapes from input shapes
+    fn infer_shapes(
+        &self,
+        input_shapes: &[&[i64]],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<Vec<i64>>>;
+
+    /// Infer output types from input types
+    fn infer_types(
+        &self,
+        input_types: &[DataType],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<DataType>> {
+        // Default: output types = input types
+        Ok(input_types.to_vec())
+    }
+}
+```
+
+#### `ops/math.rs`
+
+```rust
+use super::operator::OnnxOperator;
+use crate::types::{AttributeValue, OnnxTensor, DataType};
+use crate::{Result, OnnxError};
+use hologram_core::{Executor, ops};
+use std::collections::HashMap;
+
+/// Add operator
+pub struct AddOp;
+
+impl OnnxOperator for AddOp {
+    fn execute(
+        &self,
+        exec: &Executor,
+        inputs: &[&OnnxTensor],
+        _attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<OnnxTensor>> {
+        if inputs.len() != 2 {
+            return Err(OnnxError::InvalidOperator(
+                format!("Add expects 2 inputs, got {}", inputs.len())
+            ));
+        }
+
+        let a = inputs[0].as_tensor_f32()?;
+        let b = inputs[1].as_tensor_f32()?;
+
+        // Check broadcasting compatibility
+        if !a.is_broadcast_compatible_with(&b) {
+            return Err(OnnxError::ShapeMismatch(
+                format!("Cannot broadcast {:?} and {:?}", a.shape(), b.shape())
+            ));
+        }
+
+        // Allocate output
+        let output_shape = broadcast_shapes(a.shape(), b.shape())?;
+        let n = output_shape.iter().product();
+        let mut output_buf = exec.allocate::<f32>(n)?;
+
+        // Execute addition
+        ops::math::vector_add(exec, a.buffer(), b.buffer(), &mut output_buf, n)?;
+
+        let output_tensor = hologram_core::Tensor::from_buffer(output_buf, output_shape)?;
+        Ok(vec![OnnxTensor::from_hologram(output_tensor)])
+    }
+
+    fn infer_shapes(
+        &self,
+        input_shapes: &[&[i64]],
+        _attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<Vec<i64>>> {
+        if input_shapes.len() != 2 {
+            return Err(OnnxError::InvalidOperator(
+                format!("Add expects 2 inputs, got {}", input_shapes.len())
+            ));
+        }
+
+        let output_shape = broadcast_shapes_i64(input_shapes[0], input_shapes[1])?;
+        Ok(vec![output_shape])
+    }
+}
+
+// Helper function for broadcasting
+fn broadcast_shapes(a: &[usize], b: &[usize]) -> Result<Vec<usize>> {
+    // NumPy-style broadcasting rules
+    let max_len = a.len().max(b.len());
+    let mut result = vec![1; max_len];
+
+    for i in 0..max_len {
+        let a_dim = if i < a.len() { a[a.len() - 1 - i] } else { 1 };
+        let b_dim = if i < b.len() { b[b.len() - 1 - i] } else { 1 };
+
+        if a_dim == b_dim || a_dim == 1 || b_dim == 1 {
+            result[max_len - 1 - i] = a_dim.max(b_dim);
+        } else {
+            return Err(OnnxError::ShapeMismatch(
+                format!("Cannot broadcast shapes {:?} and {:?}", a, b)
+            ));
+        }
+    }
+
+    Ok(result)
+}
+```
+
+### 6. `executor/` - Graph Execution
+
+#### `executor/executor.rs`
+
+```rust
+use crate::graph::{Graph, Node};
+use crate::ops::OperatorRegistry;
+use crate::types::OnnxTensor;
+use crate::{Result, OnnxError};
+use hologram_core::Executor;
+use std::collections::HashMap;
+use std::any::Any;
+
+/// ONNX graph executor
+pub struct OnnxExecutor {
+    graph: Graph,
+    exec: Executor,
+    registry: OperatorRegistry,
+    execution_order: Vec<usize>,
+    value_cache: HashMap<String, Box<dyn Any>>,
+}
+
+impl OnnxExecutor {
+    pub fn new(graph: Graph, exec: Executor) -> Result<Self> {
+        let registry = crate::ops::create_standard_registry();
+        let execution_order = crate::graph::analysis::topological_sort(&graph)?;
+
+        Ok(Self {
+            graph,
+            exec,
+            registry,
+            execution_order,
+            value_cache: HashMap::new(),
+        })
+    }
+
+    pub fn run(&mut self, inputs: HashMap<String, OnnxTensor>) -> Result<HashMap<String, OnnxTensor>> {
+        // 1. Initialize value cache
+        self.value_cache.clear();
+
+        // Add inputs
+        for (name, tensor) in inputs {
+            self.value_cache.insert(name, Box::new(tensor));
+        }
+
+        // Add initializers (weights)
+        for (name, tensor) in &self.graph.initializers {
+            self.value_cache.insert(name.clone(), Box::new(tensor.clone()));
+        }
+
+        // 2. Execute nodes in topological order
+        for &node_idx in &self.execution_order {
+            let node = &self.graph.nodes[node_idx];
+            self.execute_node(node)?;
+        }
+
+        // 3. Extract outputs
+        let mut outputs = HashMap::new();
+        for output_info in &self.graph.outputs {
+            let tensor = self.value_cache.get(&output_info.name)
+                .ok_or_else(|| OnnxError::MissingValue(output_info.name.clone()))?;
+
+            let tensor = tensor.downcast_ref::<OnnxTensor>()
+                .ok_or_else(|| OnnxError::TypeMismatch("Expected OnnxTensor".to_string()))?;
+
+            outputs.insert(output_info.name.clone(), tensor.clone());
+        }
+
+        Ok(outputs)
+    }
+
+    fn execute_node(&mut self, node: &Node) -> Result<()> {
+        // Get operator
+        let op = self.registry.get(&node.op_type)
+            .ok_or_else(|| OnnxError::UnknownOperator(node.op_type.clone()))?;
+
+        // Fetch inputs
+        let input_tensors: Vec<&OnnxTensor> = node.inputs.iter()
+            .map(|name| {
+                self.value_cache.get(name)
+                    .ok_or_else(|| OnnxError::MissingValue(name.clone()))?
+                    .downcast_ref::<OnnxTensor>()
+                    .ok_or_else(|| OnnxError::TypeMismatch(
+                        format!("Expected OnnxTensor for input '{}'", name)
+                    ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        // Execute
+        let outputs = op.execute(&self.exec, &input_tensors, &node.attributes)?;
+
+        // Store outputs
+        for (output_name, output_tensor) in node.outputs.iter().zip(outputs) {
+            self.value_cache.insert(output_name.clone(), Box::new(output_tensor));
+        }
+
+        Ok(())
+    }
+}
+```
+
+### 7. `types/` - Type System
+
+#### `types/dtype.rs`
+
+```rust
+use crate::{OnnxError, Result};
+
+/// ONNX data types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DataType {
+    Float32,
+    Float16,
+    Int8,
+    Int32,
+    Int64,
+    Bool,
+}
+
+impl DataType {
+    pub fn from_proto(proto_type: i32) -> Result<Self> {
+        match proto_type {
+            1 => Ok(DataType::Float32),
+            10 => Ok(DataType::Float16),
+            3 => Ok(DataType::Int8),
+            6 => Ok(DataType::Int32),
+            7 => Ok(DataType::Int64),
+            9 => Ok(DataType::Bool),
+            _ => Err(OnnxError::UnsupportedType(proto_type)),
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            DataType::Float32 => 4,
+            DataType::Float16 => 2,
+            DataType::Int8 => 1,
+            DataType::Int32 => 4,
+            DataType::Int64 => 8,
+            DataType::Bool => 1,
+        }
+    }
+}
+```
+
+### 8. `model.rs` - High-Level API
+
+```rust
+use crate::graph::Graph;
+use crate::executor::OnnxExecutor;
+use crate::types::OnnxTensor;
+use crate::{Result, OnnxError};
+use hologram_core::Executor;
+use std::path::Path;
+use std::collections::HashMap;
+
+/// High-level ONNX model interface
+pub struct OnnxModel {
+    graph: Graph,
+}
+
+impl OnnxModel {
+    /// Load ONNX model from file
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let proto = crate::proto::load_model(path)?;
+        let graph = Graph::from_proto(proto)?;
+        Ok(Self { graph })
+    }
+
+    /// Get input names
+    pub fn input_names(&self) -> Vec<&str> {
+        self.graph.inputs.iter().map(|i| i.name.as_str()).collect()
+    }
+
+    /// Get output names
+    pub fn output_names(&self) -> Vec<&str> {
+        self.graph.outputs.iter().map(|o| o.name.as_str()).collect()
+    }
+
+    /// Create executor
+    pub fn create_executor(&self, exec: Executor) -> Result<OnnxExecutor> {
+        OnnxExecutor::new(self.graph.clone(), exec)
+    }
+}
+```
+
+---
+
+## Public API
+
+### Basic Usage
+
+```rust
+use hologram_onnx::{OnnxModel, OnnxExecutor};
+use hologram_core::Executor;
+use std::collections::HashMap;
+
+// Load model
+let model = OnnxModel::load("model.onnx")?;
+
+// Inspect model
+println!("Inputs: {:?}", model.input_names());
+println!("Outputs: {:?}", model.output_names());
+
+// Create executor
+let exec = Executor::new()?;
+let mut onnx_exec = model.create_executor(exec)?;
+
+// Prepare inputs
+let mut inputs = HashMap::new();
+inputs.insert("input".to_string(), input_tensor);
+
+// Run inference
+let outputs = onnx_exec.run(inputs)?;
+let result = outputs.get("output").unwrap();
+```
+
+---
+
+## Dependencies
+
+### Cargo.toml
+
+```toml
+[package]
+name = "hologram-onnx"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hologram Team"]
+description = "ONNX runtime for hologram"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Hologram crates
+hologram-core = { path = "../../../crates/hologram-core" }
+hologram-ai = { path = "../hologram-ai" }
+hologram-backends = { path = "../../../crates/hologram-backends" }
+
+# Protobuf
+prost = "0.12"
+prost-types = "0.12"
+
+# Utilities
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Optional: FP16 support
+half = { version = "2.3", optional = true }
+
+# Optional: Tracing
+tracing = { version = "0.1", optional = true }
+
+# Optional: Parallel execution
+rayon = { version = "1.8", optional = true }
+
+[build-dependencies]
+prost-build = "0.12"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[features]
+default = []
+fp16 = ["half"]
+tracing = ["dep:tracing"]
+parallel = ["rayon"]
+
+[[bench]]
+name = "inference"
+harness = false
+```
+
+---
+
+## Build Configuration
+
+### build.rs
+
+```rust
+fn main() {
+    // Generate protobuf bindings
+    let mut config = prost_build::Config::new();
+    config.out_dir("src/proto");
+
+    config.compile_protos(&["proto/onnx.proto3"], &["proto/"])
+        .expect("Failed to compile ONNX protobuf schema");
+
+    println!("cargo:rerun-if-changed=proto/onnx.proto3");
+}
+```
+
+---
+
+## Example Usage
+
+### Simple Model
+
+```rust
+// examples/simple_model.rs
+use hologram_onnx::{OnnxModel, OnnxExecutor};
+use hologram_core::{Executor, Tensor};
+
+fn main() -> anyhow::Result<()> {
+    // Load model
+    let model = OnnxModel::load("model.onnx")?;
+
+    // Create executor
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    // Create input tensor
+    let input_data: Vec<f32> = (0..224*224*3).map(|i| i as f32).collect();
+    let input_tensor = Tensor::from_vec(input_data, vec![1, 3, 224, 224])?;
+
+    // Run inference
+    let inputs = HashMap::from([("input", input_tensor)]);
+    let outputs = onnx_exec.run(inputs)?;
+
+    // Get result
+    let output = outputs.get("output").unwrap();
+    println!("Output shape: {:?}", output.shape());
+
+    Ok(())
+}
+```
+
+---
+
+## Testing Structure
+
+```rust
+// tests/integration_test.rs
+use hologram_onnx::{OnnxModel, OnnxExecutor};
+use hologram_core::Executor;
+
+#[test]
+fn test_simple_addition() -> anyhow::Result<()> {
+    let model = OnnxModel::load("tests/fixtures/models/add.onnx")?;
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    // Test with sample inputs
+    let inputs = create_test_inputs();
+    let outputs = onnx_exec.run(inputs)?;
+
+    // Validate outputs
+    assert_output_shape(&outputs);
+    assert_output_values(&outputs);
+
+    Ok(())
+}
+```
+
+---
+
+This crate structure provides a complete, modular implementation of the ONNX runtime optimized for hologram's architecture. Each module has clear responsibilities and can be developed and tested independently.

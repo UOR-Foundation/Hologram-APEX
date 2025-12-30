@@ -1,0 +1,704 @@
+---
+title: "Hologram Memory Manager Architecture"
+description: "Hologram Memory Manager Architecture documentation"
+---
+
+# Hologram Memory Manager Architecture
+
+**Detailed System Design and Implementation**
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Core Types](#core-types)
+3. [Hybrid Storage System](#hybrid-storage-system)
+4. [Gauge Metadata System](#gauge-metadata-system)
+5. [Memory Pool Architecture](#memory-pool-architecture)
+6. [Type System Design](#type-system-design)
+7. [Data Flow Patterns](#data-flow-patterns)
+8. [Performance Characteristics](#performance-characteristics)
+
+---
+
+## Overview
+
+The hologram-memory-manager provides a **hybrid memory management system** that bridges CPU and device (GPU/WASM) execution environments while maintaining zero-copy semantics within each environment.
+
+### Key Design Principles
+
+1. **Zero-Copy Within Storage Type**: No data copying within CpuShared or DevicePool
+2. **Gauge-Aware**: Period metadata flows through entire pipeline
+3. **Backend-Agnostic**: Works with any hologram-backends implementation
+4. **Streaming-First**: O(1) space through fixed pool reuse
+5. **Type-Safe**: Strong typing via Rust's type system
+
+### System Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    hologram-memory-manager                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │   Chunking   │───▶│   Compute    │───▶│    Domain    │  │
+│  │              │    │   Pipeline   │    │    Heads     │  │
+│  │ - Primorial  │    │              │    │              │  │
+│  │ - Gauges     │    │ - StreamOps  │    │ - Normalize  │  │
+│  │ - Metadata   │    │ - Zero-copy  │    │ - Filter     │  │
+│  └──────────────┘    └──────────────┘    │ - Aggregate  │  │
+│         │                   │             └──────────────┘  │
+│         └───────────────────┴──────────────────┐            │
+│                                                 ▼            │
+│                         ┌─────────────────────────────────┐ │
+│                         │   MemoryStorage (Hybrid)        │ │
+│                         ├─────────────────────────────────┤ │
+│                         │ CpuShared(Arc<[u8]>)            │ │
+│                         │        OR                       │ │
+│                         │ DevicePool { backend, handle }  │ │
+│                         └─────────────────────────────────┘ │
+│                                     │                        │
+│                                     ▼                        │
+│                         ┌─────────────────────────────────┐ │
+│                         │   UniversalMemoryPool           │ │
+│                         │   (Vec<EmbeddedBlock>)          │ │
+│                         └─────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                                     │
+                                     ▼
+                         ┌─────────────────────────────────┐
+                         │     hologram-backends           │
+                         │  (CPU, Metal, CUDA, WASM, etc.) │
+                         └─────────────────────────────────┘
+```
+
+---
+
+## Core Types
+
+### ChunkWithGauge
+
+The fundamental unit of chunked data with gauge metadata.
+
+```rust
+pub struct ChunkWithGauge {
+    /// Hybrid storage (CPU or Device)
+    storage: MemoryStorage,
+
+    /// Gauge index (0-23 for standard gauges)
+    pub gauge: u8,
+
+    /// Primorial level used for chunking
+    pub primorial: u32,
+
+    /// Chunk index in sequence
+    pub index: usize,
+}
+```
+
+**Key Methods**:
+
+- `from_arc(source, gauge, primorial, index)` - Create from Arc slice (CPU)
+- `from_device(backend, pool, offset, len, gauge, primorial, index)` - Create from device pool
+- `data() -> Option<&[u8]>` - Access CPU-resident data (returns None for device)
+- `len() -> usize` - Size in bytes
+- `gauge_name() -> &str` - Human-readable gauge name
+
+**Design Rationale**:
+
+- **Gauge metadata**: Enables backend optimizations based on periodicity
+- **Primorial tracking**: Documents chunking level for debugging
+- **Index**: Maintains chunk order in streaming sequences
+- **Hybrid storage**: Single type works for both CPU and device paths
+
+### EmbeddedBlock
+
+A chunk embedded into the universal memory pool.
+
+```rust
+pub struct EmbeddedBlock {
+    /// Hybrid storage (CPU or Device)
+    storage: MemoryStorage,
+
+    /// Gauge index
+    gauge: u8,
+}
+```
+
+**Key Methods**:
+
+- `from_arc(source, gauge)` - Create from Arc slice
+- `from_device(backend, pool, offset, len, gauge)` - Create from device pool
+- `data() -> Option<&[u8]>` - Access CPU-resident data
+- `len() -> usize` - Size in bytes
+- `gauge() -> u8` - Get gauge index
+
+**Design Rationale**:
+
+- **Minimal metadata**: Only gauge needed after embedding
+- **Zero-copy**: Arc or device handle, never copies data
+- **Type symmetry**: Parallel to ChunkWithGauge for consistency
+
+### MemoryStorage
+
+The hybrid storage enumeration that enables both CPU and device paths.
+
+```rust
+pub enum MemoryStorage {
+    /// CPU: Arc-based for Rayon parallelism
+    CpuShared(Arc<[u8]>),
+
+    /// Device: Backend pools for GPU/WASM
+    DevicePool {
+        backend: Arc<Mutex<dyn Backend + Send + Sync>>,
+        pool: PoolHandle,
+        offset: usize,
+        len: usize,
+    },
+}
+```
+
+**Key Methods**:
+
+- `as_slice() -> Option<&[u8]>` - CPU access (None for device)
+- `len() -> usize` - Size in bytes
+- `is_cpu_resident() -> bool` - Check storage location
+
+**Design Rationale**:
+
+- **Two storage paths**: Optimized for each execution environment
+- **Arc for CPU**: Enables `clone()` for parallel access, zero-copy sharing
+- **Device handle**: Keeps data on device, avoids PCIe transfers
+- **Optional slice**: Type-safe way to distinguish CPU vs device
+
+---
+
+## Hybrid Storage System
+
+### Why Hybrid?
+
+Different execution environments have different memory characteristics:
+
+| Environment | Memory Type | Sharing Model | Access Pattern |
+|-------------|-------------|---------------|----------------|
+| **CPU** | System RAM | Multi-threaded (Rayon) | Direct pointer access |
+| **GPU** | VRAM (PCIe) | Single device | DMA transfers |
+| **WASM** | Linear memory | Browser-controlled | ArrayBuffer views |
+
+A single storage model cannot efficiently handle all three. The hybrid approach optimizes for each.
+
+### CpuShared Path
+
+**Use Case**: CPU-resident data for scalar operations, parallel processing via Rayon
+
+**Storage**:
+```rust
+MemoryStorage::CpuShared(Arc<[u8]>)
+```
+
+**Characteristics**:
+- **Zero-copy sharing**: `Arc::clone()` increments refcount, no data copy
+- **Parallel safe**: Multiple threads can hold references
+- **Cheap access**: `as_slice()` is just an Arc deref (<1 ns)
+- **No device allocation**: Stays in system RAM
+
+**Example Flow**:
+```rust
+// Create from Vec
+let data: Vec<u8> = vec![1, 2, 3, 4];
+let arc: Arc<[u8]> = data.into();
+
+// Create storage
+let storage = MemoryStorage::CpuShared(arc);
+
+// Zero-copy access
+let slice = storage.as_slice().unwrap(); // Just Arc deref!
+
+// Clone for parallel access (refcount only)
+let storage2 = storage.clone(); // No data copy
+```
+
+### DevicePool Path
+
+**Use Case**: GPU/WASM data for device-accelerated operations
+
+**Storage**:
+```rust
+MemoryStorage::DevicePool {
+    backend: Arc<Mutex<dyn Backend + Send + Sync>>,
+    pool: PoolHandle,
+    offset: usize,
+    len: usize,
+}
+```
+
+**Characteristics**:
+- **Data stays on device**: No CPU↔device transfers
+- **Pool reuse**: Fixed pool size, streaming through O(1) space
+- **Backend-managed**: Backend handles device-specific details
+- **Offset/len**: Window into larger pool allocation
+
+**Example Flow**:
+```rust
+// Allocate device pool
+let pool = backend.allocate_pool(1024)?;
+
+// Create storage (data on device)
+let storage = MemoryStorage::DevicePool {
+    backend: Arc::new(Mutex::new(backend)),
+    pool,
+    offset: 0,
+    len: 256,
+};
+
+// CPU access returns None (data on device)
+assert!(storage.as_slice().is_none());
+
+// Operations execute on device
+// (no transfers needed)
+```
+
+### Storage Decision Logic
+
+**Current Implementation**: All operations use CpuShared (CPU-resident)
+
+**Future Extension**: Decision based on operation requirements
+
+```rust
+fn choose_storage(data: Vec<u8>, requires_device: bool) -> MemoryStorage {
+    if requires_device {
+        // Allocate device pool and copy data
+        let pool = backend.allocate_pool(data.len())?;
+        backend.copy_to_pool(pool, 0, &data)?;
+        MemoryStorage::DevicePool { backend, pool, offset: 0, len: data.len() }
+    } else {
+        // Use Arc for CPU path
+        MemoryStorage::CpuShared(data.into())
+    }
+}
+```
+
+---
+
+## Gauge Metadata System
+
+### What Are Gauges?
+
+Gauges represent **geometric structures with specific periodicities**. In the context of memory management, gauge metadata describes the **detected periodicity** in the data.
+
+### Gauge Enumeration
+
+```rust
+pub enum Gauge {
+    GAUGE_0,   // {}, period 1
+    GAUGE_1,   // {2}, period 2
+    GAUGE_2,   // {3}, period 3
+    GAUGE_3,   // {2,3}, period 6
+    GAUGE_5,   // {2,5}, period 10
+    GAUGE_7,   // {2,7}, period 14
+    GAUGE_11,  // {2,11}, period 22
+    GAUGE_13,  // {2,13}, period 26
+    GAUGE_17,  // {2,17}, period 34
+    GAUGE_19,  // {2,19}, period 38
+    GAUGE_23,  // {2,3}, period 30 (common)
+    // ... up to GAUGE_97
+}
+```
+
+Each gauge has:
+- **Prime factors**: Set of primes defining the structure
+- **Period**: Product of prime factors (cycle length)
+
+### GaugeMetadata
+
+Metadata passed to backends for optimization hints.
+
+```rust
+pub struct GaugeMetadata {
+    gauge: u8,        // Gauge index (0-23)
+    period: u32,      // Detected period in data
+}
+```
+
+**Creation**:
+```rust
+// Create gauge metadata from detected period
+let gauge = Gauge::GAUGE_23; // {2,3}
+let period = 30;             // Detected primorial
+let meta = GaugeMetadata::gauge_23(period);
+```
+
+**Usage**:
+```rust
+// Pass to backend via ExecutionParams
+let params = ExecutionParams::new(launch_config)
+    .with_gauge(meta);
+
+backend.execute_program_with_params(&program, &params)?;
+```
+
+### Gauge Flow Through Pipeline
+
+```
+Input Data
+    ↓
+PeriodDrivenChunker
+    ├─ Analyze data for periodicities
+    ├─ Select primorial levels
+    └─ Assign gauge to each chunk
+         ↓
+ChunkWithGauge { gauge: 23, primorial: 30, ... }
+    ↓
+Compute Pipeline (preserves gauge)
+    ↓
+EmbeddedBlock { gauge: 23, ... }
+    ↓
+Backend Execution
+    └─ Receives GaugeMetadata { gauge: 23, period: 30 }
+        ├─ Can vectorize based on period
+        ├─ Can prefetch based on periodicity
+        └─ Backend-specific optimizations
+```
+
+**Key Insight**: Chunking IS the gauge generator. The primorial-driven chunking automatically creates gauge metadata from detected periodicities.
+
+---
+
+## Memory Pool Architecture
+
+### UniversalMemoryPool
+
+A collection of embedded blocks with gauge metadata.
+
+```rust
+pub struct UniversalMemoryPool {
+    blocks: Vec<EmbeddedBlock>,
+}
+```
+
+**Key Methods**:
+
+- `new()` - Create empty pool
+- `add_block(block)` - Add block to pool
+- `blocks() -> &[EmbeddedBlock]` - Access all blocks
+- `len() -> usize` - Number of blocks
+- `total_size() -> usize` - Total bytes across all blocks
+
+**Design**:
+
+The pool is simply a collection of blocks. Each block maintains its own storage (CPU or device), so the pool itself has no storage overhead.
+
+**Example**:
+```rust
+let mut pool = UniversalMemoryPool::new();
+
+// Add CPU-resident block
+let arc: Arc<[u8]> = vec![1, 2, 3, 4].into();
+let block = EmbeddedBlock::from_arc(arc, 23);
+pool.add_block(block);
+
+// Add device-resident block
+let device_block = EmbeddedBlock::from_device(
+    backend,
+    pool_handle,
+    0,
+    256,
+    23,
+);
+pool.add_block(device_block);
+
+// Pool now contains 2 blocks (mixed storage types)
+assert_eq!(pool.len(), 2);
+```
+
+### Block Iteration Patterns
+
+**Sequential Iteration**:
+```rust
+for block in pool.blocks() {
+    if let Some(data) = block.data() {
+        // Process CPU-resident block
+        process_slice(data);
+    } else {
+        // Block is device-resident
+        // Execute operation on device
+    }
+}
+```
+
+**Parallel Iteration** (CPU-resident only):
+```rust
+use rayon::prelude::*;
+
+pool.blocks()
+    .par_iter()
+    .filter_map(|b| b.data())
+    .for_each(|data| {
+        // Parallel processing of CPU-resident blocks
+        process_slice(data);
+    });
+```
+
+**Gauge-Filtered Iteration**:
+```rust
+// Process only blocks with specific gauge
+let gauge_23_blocks: Vec<_> = pool.blocks()
+    .iter()
+    .filter(|b| b.gauge() == 23)
+    .collect();
+```
+
+---
+
+## Type System Design
+
+### Ownership and Borrowing
+
+**ChunkWithGauge**:
+- **Owned**: Contains MemoryStorage (owns Arc or device handle)
+- **Clone**: Cheap for CpuShared (Arc clone), expensive for DevicePool (handle clone)
+- **Borrow**: Methods take `&self`, return borrowed data
+
+**EmbeddedBlock**:
+- **Owned**: Contains MemoryStorage
+- **Clone**: Same characteristics as ChunkWithGauge
+- **Borrow**: Pool stores owned blocks, returns references
+
+**MemoryStorage**:
+- **Owned**: Owns Arc or device handle
+- **Clone**: Arc clone for CpuShared, handle clone for DevicePool
+- **Borrow**: `as_slice()` returns `Option<&[u8]>` (borrowed reference)
+
+### Type Safety Guarantees
+
+1. **CPU vs Device**: Type system prevents calling CPU methods on device data
+   ```rust
+   let data = storage.as_slice()?; // Returns Option - safe
+   // If None, data is on device
+   ```
+
+2. **Gauge Validity**: Gauge indices validated at construction
+   ```rust
+   pub fn from_arc(source: Arc<[u8]>, gauge: u8, ...) -> Self {
+       assert!(gauge < 96, "Invalid gauge index");
+       // ...
+   }
+   ```
+
+3. **Thread Safety**: All types are Send + Sync
+   ```rust
+   // Safe to send across threads
+   std::thread::spawn(move || {
+       process_chunk(chunk);
+   });
+   ```
+
+### Conversion Patterns
+
+**Vec → Arc → Storage → Chunk**:
+```rust
+let vec: Vec<u8> = vec![1, 2, 3, 4];
+let arc: Arc<[u8]> = vec.into();
+let storage = MemoryStorage::CpuShared(arc);
+let chunk = ChunkWithGauge::from_arc(arc.clone(), 23, 30, 0);
+```
+
+**Chunk → Block** (embedding):
+```rust
+let block = EmbeddedBlock::from_arc(
+    chunk.storage.as_arc().unwrap(), // Extract Arc
+    chunk.gauge,
+);
+```
+
+---
+
+## Data Flow Patterns
+
+### Pattern 1: Basic Streaming
+
+```
+Vec<u8> (Input)
+    ↓ Stream::new()
+Stream
+    ↓ .chunk(levels)
+ChunkedStream (Vec<ChunkWithGauge>)
+    ↓ .embed()
+StreamContext { pool: UniversalMemoryPool, ... }
+```
+
+**Code**:
+```rust
+let data: Vec<u8> = vec![...];
+let stream = Stream::new(data);
+let chunked = stream.chunk(10)?;
+let context = chunked.embed()?;
+// context.pool contains embedded blocks
+```
+
+### Pattern 2: Compute Pipeline
+
+```
+Vec<u8> (Input)
+    ↓
+ComputePipeline
+    ├─ Chunk with primorial
+    ├─ Apply StreamOps in sequence
+    │  ├─ ReLUOp (scalar)
+    │  ├─ ScalarMulOp (scalar)
+    │  └─ ClipOp (scalar)
+    └─ Embed to pool
+         ↓
+StreamContext
+```
+
+**Code**:
+```rust
+let pipeline = ComputePipeline::new()
+    .add_op(ReLUOp)
+    .add_op(ScalarMulOp { scale: 2.0 })
+    .add_op(ClipOp { min: 0.0, max: 10.0 });
+
+let context = pipeline.execute(data, 10)?;
+```
+
+### Pattern 3: Domain Extraction
+
+```
+UniversalMemoryPool
+    ↓
+DomainHead (NormalizeDomainHead, FilterDomainHead, etc.)
+    ├─ Filter CPU-resident blocks
+    ├─ Cast to appropriate type (&[f32])
+    ├─ Apply scalar operation
+    └─ Aggregate results
+         ↓
+Modality (Normalized, Filtered, Aggregated, Raw)
+```
+
+**Code**:
+```rust
+let normalizer = NormalizeDomainHead::new(0.0, 255.0);
+let modality = normalizer.extract(&context.pool)?;
+
+match modality {
+    Modality::Normalized(values) => {
+        println!("Extracted {} normalized values", values.len());
+    }
+    _ => unreachable!(),
+}
+```
+
+### Pattern 4: Backend Execution (Future)
+
+```
+UniversalMemoryPool (device-resident blocks)
+    ↓
+Extract GaugeMetadata
+    ↓
+Backend::execute_program_with_params()
+    ├─ Read gauge metadata
+    ├─ Apply period-based optimizations
+    └─ Execute on device (no transfers)
+         ↓
+Results (device-resident)
+```
+
+**Code** (conceptual):
+```rust
+// Blocks are device-resident
+let meta = GaugeMetadata::gauge_23(period);
+let params = ExecutionParams::new(config).with_gauge(meta);
+
+backend.execute_program_with_params(&program, &params)?;
+// Data stays on device throughout
+```
+
+---
+
+## Performance Characteristics
+
+### Memory Overhead
+
+**CpuShared**:
+- **Arc overhead**: 2 words (16 bytes on 64-bit) per Arc
+- **Data**: Exact size of original Vec
+- **Total**: Data size + 16 bytes per block
+
+**DevicePool**:
+- **Handle overhead**: Backend-specific (typically 1-2 words)
+- **Data**: On device, not in system RAM
+- **Total**: Minimal CPU overhead, device memory used
+
+### Access Latency
+
+| Operation | CpuShared | DevicePool |
+|-----------|-----------|------------|
+| `as_slice()` | <1 ns (Arc deref) | N/A (returns None) |
+| `len()` | <1 ns (field read) | <1 ns (field read) |
+| `clone()` | ~5 ns (Arc refcount) | Backend-dependent |
+| Data access | Direct memory read | Device operation |
+
+### Parallelism
+
+**Rayon (CPU)**:
+```rust
+// Parallel iteration over CPU-resident blocks
+pool.blocks()
+    .par_iter()
+    .filter_map(|b| b.data())
+    .for_each(|data| process(data));
+```
+
+- **Scales**: With available CPU cores
+- **Overhead**: Minimal (Rayon work-stealing)
+- **Zero-copy**: Each thread holds Arc reference
+
+**Device (GPU/WASM)**:
+```rust
+// Device parallelism handled by backend
+backend.execute_program_with_params(&program, &params)?;
+```
+
+- **Scales**: With device compute units (CUs/SMs)
+- **Overhead**: Backend-specific
+- **Zero-copy**: Data stays on device
+
+### Memory Amplification (Streaming)
+
+**Fixed Pool Reuse**:
+```rust
+// Allocate fixed 36 KB pool
+let pool = backend.allocate_pool(36_864)?;
+
+// Stream 100 MB through fixed pool
+for chunk in data.chunks(36_864) {
+    backend.copy_to_pool(pool, 0, chunk)?; // Reuse pool
+    backend.execute_program(&program, &config)?;
+    backend.copy_from_pool(pool, 0, &mut results)?;
+}
+
+// Amplification: 100 MB / 36 KB = 2,844×
+```
+
+**Benefit**: O(1) space for streaming large data.
+
+---
+
+## Summary
+
+The hologram-memory-manager architecture provides:
+
+1. **Hybrid Storage**: Optimized paths for CPU and device execution
+2. **Zero-Copy**: No data copying within each storage type
+3. **Gauge Awareness**: Periodicity metadata flows through entire pipeline
+4. **Type Safety**: Rust's type system prevents misuse
+5. **Performance**: Sub-nanosecond CPU access, device-resident optimization
+6. **Flexibility**: Works with any hologram-backends implementation
+
+The design prioritizes **simplicity** (minimal abstractions) and **correctness** (type-safe operations) while providing the flexibility needed for multi-backend execution.
+
+For implementation details, see [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).
+For backend integration, see [BACKENDS.md](BACKENDS.md).
+For streaming patterns, see [STREAMING.md](STREAMING.md).

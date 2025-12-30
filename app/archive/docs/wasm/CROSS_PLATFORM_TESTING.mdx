@@ -1,0 +1,716 @@
+---
+title: "Cross-Platform Testing Guide"
+description: "Cross-Platform Testing Guide documentation"
+---
+
+# Cross-Platform Testing Guide
+
+This document provides comprehensive guidance for testing Hologram WASM builds across ARM64 and x86-64 platforms, ensuring consistent functionality and performance.
+
+## Overview
+
+**Goal**: Guarantee that `hologram-backends` WASM target builds correctly and passes all tests on both ARM and x86 architectures.
+
+**Critical Requirement**: `cargo test --workspace` must pass on all platforms before any code is committed.
+
+---
+
+## Platform Support Matrix
+
+| Platform | Architecture | Rust Target | WASM Status | WebGPU Status | Priority |
+|----------|-------------|-------------|-------------|---------------|----------|
+| macOS | ARM64 (Apple Silicon) | `aarch64-apple-darwin` | ✅ Supported | ✅ Safari 18+ | High |
+| macOS | x86-64 (Intel) | `x86_64-apple-darwin` | ✅ Supported | ✅ Safari 18+ | Medium |
+| Linux | ARM64 | `aarch64-unknown-linux-gnu` | ✅ Supported | ✅ Chrome 113+ | High |
+| Linux | x86-64 | `x86_64-unknown-linux-gnu` | ✅ Supported | ✅ Chrome 113+ | High |
+| Windows | x86-64 | `x86_64-pc-windows-msvc` | ✅ Supported | ✅ Chrome 113+ | Medium |
+| Windows | ARM64 | `aarch64-pc-windows-msvc` | ⚠️ Experimental | ⚠️ Chrome 113+ | Low |
+
+**WASM Target**: All platforms compile to `wasm32-unknown-unknown` (platform-independent).
+
+---
+
+## Local Testing - Quick Start
+
+### Prerequisites
+
+```bash
+# Install Rust with WASM target
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add wasm32-unknown-unknown
+
+# Install wasm-pack (optional, for packaging)
+curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+# Install wasm-bindgen-cli (for manual builds)
+cargo install wasm-bindgen-cli
+
+# Install wasm-opt (for size optimization)
+# macOS
+brew install binaryen
+
+# Linux
+sudo apt-get install binaryen
+
+# Windows
+# Download from https://github.com/WebAssembly/binaryen/releases
+```
+
+### Basic Testing Commands
+
+```bash
+# 1. Run workspace tests (MUST PASS on all platforms)
+cargo test --workspace
+
+# 2. Build WASM backend
+cargo build --target wasm32-unknown-unknown -p hologram-backends
+
+# 3. Build with WebGPU support
+cargo build --target wasm32-unknown-unknown -p hologram-backends --features webgpu
+
+# 4. Run WASM-specific tests
+cargo test --target wasm32-unknown-unknown -p hologram-backends
+
+# 5. Build release with optimizations
+cargo build --target wasm32-unknown-unknown --release -p hologram-backends
+```
+
+### Platform-Specific Verification
+
+#### macOS (ARM64 - Apple Silicon)
+
+```bash
+# Verify platform
+uname -m  # Should output: arm64
+
+# Check Rust toolchain
+rustc --version --verbose | grep host
+# Should show: aarch64-apple-darwin
+
+# Run full test suite
+cargo test --workspace
+
+# Build WASM
+cargo build --target wasm32-unknown-unknown -p hologram-backends
+
+# Expected: Clean build, no errors
+```
+
+#### macOS (x86-64 - Intel)
+
+```bash
+# Verify platform
+uname -m  # Should output: x86_64
+
+# Check Rust toolchain
+rustc --version --verbose | grep host
+# Should show: x86_64-apple-darwin
+
+# Run full test suite
+cargo test --workspace
+
+# Build WASM
+cargo build --target wasm32-unknown-unknown -p hologram-backends
+
+# Expected: Clean build, no errors
+```
+
+#### Linux (ARM64)
+
+```bash
+# Verify platform
+uname -m  # Should output: aarch64
+
+# Check Rust toolchain
+rustc --version --verbose | grep host
+# Should show: aarch64-unknown-linux-gnu
+
+# Install build dependencies
+sudo apt-get update
+sudo apt-get install build-essential pkg-config
+
+# Run full test suite
+cargo test --workspace
+
+# Build WASM
+cargo build --target wasm32-unknown-unknown -p hologram-backends
+
+# Expected: Clean build, no errors
+```
+
+#### Linux (x86-64)
+
+```bash
+# Verify platform
+uname -m  # Should output: x86_64
+
+# Check Rust toolchain
+rustc --version --verbose | grep host
+# Should show: x86_64-unknown-linux-gnu
+
+# Install build dependencies
+sudo apt-get update
+sudo apt-get install build-essential pkg-config
+
+# Run full test suite
+cargo test --workspace
+
+# Build WASM
+cargo build --target wasm32-unknown-unknown -p hologram-backends
+
+# Expected: Clean build, no errors
+```
+
+#### Windows (x86-64)
+
+```powershell
+# Verify platform (PowerShell)
+[System.Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE")
+# Should output: AMD64
+
+# Check Rust toolchain
+rustc --version --verbose | findstr host
+# Should show: x86_64-pc-windows-msvc
+
+# Run full test suite
+cargo test --workspace
+
+# Build WASM
+cargo build --target wasm32-unknown-unknown -p hologram-backends
+
+# Expected: Clean build, no errors
+```
+
+---
+
+## Automated CI/CD Testing
+
+### GitHub Actions - Multi-Platform Workflow
+
+Create `.github/workflows/wasm-multiplatform.yml`:
+
+```yaml
+name: WASM Multi-Platform Tests
+
+on:
+  push:
+    branches: [main, develop, feature/*]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-wasm:
+    name: Test WASM on ${{ matrix.os }} (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS ARM64 (Apple Silicon)
+          - os: macos-14
+            arch: arm64
+            target: wasm32-unknown-unknown
+
+          # macOS x86-64 (Intel)
+          - os: macos-13
+            arch: x86_64
+            target: wasm32-unknown-unknown
+
+          # Linux ARM64
+          - os: ubuntu-latest
+            arch: arm64
+            target: wasm32-unknown-unknown
+            container: messense/rust-musl-cross:aarch64-musl
+
+          # Linux x86-64
+          - os: ubuntu-latest
+            arch: x86_64
+            target: wasm32-unknown-unknown
+
+          # Windows x86-64
+          - os: windows-latest
+            arch: x86_64
+            target: wasm32-unknown-unknown
+
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Run workspace tests
+        run: cargo test --workspace --verbose
+
+      - name: Build WASM backend
+        run: cargo build --target ${{ matrix.target }} -p hologram-backends --verbose
+
+      - name: Build WASM with WebGPU
+        run: cargo build --target ${{ matrix.target }} -p hologram-backends --features webgpu --verbose
+
+      - name: Build release WASM
+        run: cargo build --target ${{ matrix.target }} -p hologram-backends --release --verbose
+
+      - name: Check binary size
+        if: matrix.os != 'windows-latest'
+        run: |
+          ls -lh target/${{ matrix.target }}/release/hologram_backends.wasm
+          SIZE=$(stat -f%z target/${{ matrix.target }}/release/hologram_backends.wasm 2>/dev/null || stat -c%s target/${{ matrix.target }}/release/hologram_backends.wasm)
+          echo "WASM binary size: $SIZE bytes"
+          if [ $SIZE -gt 10485760 ]; then
+            echo "::warning::WASM binary size exceeds 10MB"
+          fi
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-${{ matrix.os }}-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/hologram_backends.wasm
+          if-no-files-found: warn
+
+  compare-artifacts:
+    name: Compare Platform Binaries
+    needs: test-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Compare binary sizes
+        run: |
+          echo "WASM Binary Size Comparison:"
+          for file in wasm-*/hologram_backends.wasm; do
+            size=$(stat -c%s "$file" 2>/dev/null || echo "N/A")
+            echo "$file: $size bytes"
+          done
+```
+
+### CI/CD Best Practices
+
+1. **Fail Fast**: Set `fail-fast: false` to test all platforms even if one fails
+2. **Caching**: Cache Cargo registry, git, and build artifacts for faster builds
+3. **Artifact Upload**: Save WASM binaries for inspection and comparison
+4. **Size Monitoring**: Warn if binary size exceeds threshold (10MB)
+5. **Comprehensive Testing**: Run fmt, clippy, tests, and builds on every commit
+
+---
+
+## Browser Testing
+
+### WebGPU Compatibility
+
+| Browser | Version | macOS ARM | macOS x86 | Linux ARM | Linux x86 | Windows |
+|---------|---------|-----------|-----------|-----------|-----------|---------|
+| Chrome | 113+ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Edge | 113+ | ✅ | ✅ | ⚠️ | ✅ | ✅ |
+| Firefox | 119+ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| Safari | 18+ | ✅ | ✅ | N/A | N/A | N/A |
+
+Legend:
+- ✅ Stable support
+- ⚠️ Experimental/behind flag
+- ❌ Not supported
+- N/A - Not applicable
+
+### Browser Testing Setup
+
+#### Chrome DevTools Testing
+
+```javascript
+// Open Chrome DevTools Console
+
+// 1. Check WebGPU availability
+if (navigator.gpu) {
+  console.log("✅ WebGPU available");
+  const adapter = await navigator.gpu.requestAdapter();
+  console.log("Adapter:", adapter);
+  const device = await adapter.requestDevice();
+  console.log("Device:", device);
+} else {
+  console.log("❌ WebGPU not available");
+}
+
+// 2. Load WASM module
+const response = await fetch('/path/to/hologram_backends.wasm');
+const buffer = await response.arrayBuffer();
+const module = await WebAssembly.compile(buffer);
+const instance = await WebAssembly.instantiate(module);
+console.log("✅ WASM module loaded");
+
+// 3. Test basic operation
+// (Requires proper imports - see WASM_DEPLOYMENT_GUIDE.md)
+```
+
+#### Safari Testing
+
+```bash
+# Enable WebGPU (Safari 18+)
+# Safari → Develop → Experimental Features → WebGPU
+
+# Test in Safari Web Inspector
+open -a Safari index.html
+```
+
+#### Firefox Testing
+
+```bash
+# Enable WebGPU flag
+# about:config → set dom.webgpu.enabled = true
+
+# Test in Firefox Developer Tools
+firefox index.html
+```
+
+### Automated Browser Testing
+
+Use Playwright for automated browser tests:
+
+```javascript
+// tests/browser/wasm.spec.js
+const { test, expect } = require('@playwright/test');
+
+test.describe('WASM Cross-Platform', () => {
+  test('loads WASM module in Chrome', async ({ page }) => {
+    await page.goto('http://localhost:8080');
+
+    // Check WebGPU availability
+    const hasWebGPU = await page.evaluate(() => !!navigator.gpu);
+    expect(hasWebGPU).toBe(true);
+
+    // Load WASM module
+    const loaded = await page.evaluate(async () => {
+      const response = await fetch('/hologram_backends.wasm');
+      const buffer = await response.arrayBuffer();
+      const module = await WebAssembly.compile(buffer);
+      return module instanceof WebAssembly.Module;
+    });
+    expect(loaded).toBe(true);
+  });
+
+  test('WASM module size is acceptable', async ({ page }) => {
+    const response = await page.request.get('/hologram_backends.wasm');
+    const size = (await response.body()).length;
+    console.log(`WASM size: ${size} bytes`);
+    expect(size).toBeLessThan(10 * 1024 * 1024); // <10MB
+  });
+});
+```
+
+Run Playwright tests:
+
+```bash
+# Install Playwright
+npm install -D @playwright/test
+
+# Run tests on all browsers
+npx playwright test --browser=all
+
+# Run on specific platform
+npx playwright test --project=chromium
+```
+
+---
+
+## Performance Benchmarking
+
+### Cross-Platform Performance Testing
+
+```rust
+// benches/wasm_cross_platform.rs
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use hologram_backends::WasmBackend;
+
+fn benchmark_wasm_operations(c: &mut Criterion) {
+    let backend = WasmBackend::new();
+
+    c.bench_function("wasm_vector_add_1k", |b| {
+        b.iter(|| {
+            // Benchmark vector add operation
+            backend.vector_add(black_box(1000));
+        });
+    });
+
+    c.bench_function("wasm_matrix_multiply_64x64", |b| {
+        b.iter(|| {
+            backend.matrix_multiply(black_box(64), black_box(64));
+        });
+    });
+}
+
+criterion_group!(benches, benchmark_wasm_operations);
+criterion_main!(benches);
+```
+
+Run benchmarks on different platforms:
+
+```bash
+# macOS ARM64
+cargo bench --bench wasm_cross_platform > bench_macos_arm64.txt
+
+# macOS x86-64
+cargo bench --bench wasm_cross_platform > bench_macos_x86_64.txt
+
+# Linux ARM64
+cargo bench --bench wasm_cross_platform > bench_linux_arm64.txt
+
+# Linux x86-64
+cargo bench --bench wasm_cross_platform > bench_linux_x86_64.txt
+
+# Compare results
+diff bench_macos_arm64.txt bench_linux_arm64.txt
+diff bench_macos_x86_64.txt bench_linux_x86_64.txt
+```
+
+### Expected Performance Characteristics
+
+| Operation | ARM64 (M1) | x86-64 (i9) | Ratio |
+|-----------|------------|-------------|-------|
+| Vector Add (1K) | ~500ns | ~600ns | 1.2x |
+| Matrix Mul (64x64) | ~50μs | ~55μs | 1.1x |
+| SIMD Operations | ~300ns | ~350ns | 1.17x |
+
+**Note**: ARM64 (especially Apple Silicon) often outperforms x86-64 in SIMD workloads.
+
+---
+
+## Debugging Platform-Specific Issues
+
+### Common Issues and Solutions
+
+#### Issue 1: WASM Module Fails to Load
+
+**Symptoms**: `WebAssembly.compile()` fails with "invalid magic number"
+
+**Diagnosis**:
+```bash
+# Check WASM binary is valid
+wasm-validate target/wasm32-unknown-unknown/release/hologram_backends.wasm
+
+# Inspect binary
+wasm-objdump -h target/wasm32-unknown-unknown/release/hologram_backends.wasm
+```
+
+**Solution**: Ensure build target is `wasm32-unknown-unknown`, not host target.
+
+#### Issue 2: Different Binary Sizes on ARM vs x86
+
+**Symptoms**: ARM binary is 5MB, x86 binary is 7MB
+
+**Diagnosis**:
+```bash
+# Compare section sizes
+wasm-objdump -h target/wasm32-unknown-unknown/release/hologram_backends.wasm | grep -A5 "Sections:"
+```
+
+**Solution**: This is expected - different platforms may produce slightly different binaries due to:
+- Host-specific optimizations during cross-compilation
+- Different LLVM versions
+- Caching differences
+
+Use `wasm-opt` to normalize:
+```bash
+wasm-opt -Oz -o optimized.wasm hologram_backends.wasm
+```
+
+#### Issue 3: Tests Pass on x86 but Fail on ARM
+
+**Symptoms**: `cargo test` passes on x86-64 but fails on ARM64
+
+**Diagnosis**:
+```bash
+# Run with backtrace
+RUST_BACKTRACE=1 cargo test --workspace
+
+# Check for endianness issues (rare)
+# WASM is little-endian, but check binary data handling
+
+# Check for floating-point precision issues
+cargo test -- --nocapture | grep -i "float\|precision"
+```
+
+**Solution**:
+- Check for platform-specific assumptions in test code
+- Verify no hardcoded endianness assumptions
+- Use `approx` crate for floating-point comparisons
+
+#### Issue 4: WebGPU Works on Chrome but Not Safari
+
+**Symptoms**: WebGPU adapter unavailable in Safari
+
+**Diagnosis**:
+```javascript
+// Check adapter limits
+const adapter = await navigator.gpu.requestAdapter();
+console.log("Limits:", adapter.limits);
+console.log("Features:", adapter.features);
+```
+
+**Solution**:
+- Safari WebGPU has stricter limits
+- Reduce workgroup sizes in WGSL shaders
+- Check for feature availability before use
+
+---
+
+## Test Checklist
+
+### Before Committing Code
+
+- [ ] `cargo fmt --all` - Code is formatted
+- [ ] `cargo clippy --workspace -- -D warnings` - No clippy warnings
+- [ ] `cargo test --workspace` - All tests pass on development platform
+- [ ] `cargo build --target wasm32-unknown-unknown -p hologram-backends` - WASM builds successfully
+- [ ] Commit message follows conventions
+
+### Before Merging PR
+
+- [ ] CI passes on all platforms (macOS ARM, macOS x86, Linux ARM, Linux x86, Windows)
+- [ ] WASM artifact sizes are reasonable (<10MB)
+- [ ] No performance regressions (check benchmark comparison)
+- [ ] Browser tests pass (Chrome, Safari, Firefox)
+- [ ] Documentation updated if APIs changed
+
+### Before Release
+
+- [ ] Full test suite passes on all platforms
+- [ ] Performance benchmarks run on ARM and x86
+- [ ] WebGPU tested in all supported browsers
+- [ ] WASM binary size optimized (`wasm-opt -Oz`)
+- [ ] Release notes document platform-specific changes
+
+---
+
+## Performance Monitoring
+
+### Continuous Performance Tracking
+
+```yaml
+# .github/workflows/performance-tracking.yml
+name: Performance Tracking
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  benchmark:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run benchmarks
+        run: cargo bench --bench wasm_cross_platform | tee bench_output.txt
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks-${{ matrix.os }}
+          path: bench_output.txt
+```
+
+### Performance Regression Detection
+
+```bash
+# Compare benchmark results
+python scripts/compare_benchmarks.py \
+  --baseline benchmarks-macos-14-baseline.txt \
+  --current benchmarks-macos-14-current.txt \
+  --threshold 10  # Fail if >10% regression
+```
+
+---
+
+## Resources
+
+### Platform-Specific Documentation
+
+- **macOS ARM64**: [Apple Silicon Developer Guide](https://developer.apple.com/documentation/apple-silicon)
+- **Linux ARM64**: [ARM Developer Resources](https://developer.arm.com/)
+- **WASM**: [WebAssembly Specification](https://webassembly.github.io/spec/)
+- **WebGPU**: [WebGPU Specification](https://gpuweb.github.io/gpuweb/)
+
+### Testing Tools
+
+- **wasm-pack**: <https://rustwasm.github.io/wasm-pack/>
+- **wasm-bindgen**: <https://rustwasm.github.io/wasm-bindgen/>
+- **Playwright**: <https://playwright.dev/>
+- **Criterion**: <https://github.com/bheisler/criterion.rs>
+
+### CI/CD Resources
+
+- **GitHub Actions**: <https://docs.github.com/en/actions>
+- **Cross-compilation**: <https://rust-lang.github.io/rustup/cross-compilation.html>
+
+---
+
+## Troubleshooting
+
+### Get Help
+
+If tests fail on a specific platform:
+
+1. **Check CI logs**: GitHub Actions → failed job → expand error
+2. **Reproduce locally**: Use same OS/architecture as CI
+3. **Isolate issue**: Run specific test with `cargo test <test_name>`
+4. **Check platform differences**: Compare `uname -m` and Rust target
+5. **Report issue**: Include platform info, error logs, reproduction steps
+
+### Common Commands for Debugging
+
+```bash
+# Show detailed error information
+RUST_BACKTRACE=full cargo test --workspace
+
+# Show compiler warnings
+cargo build --workspace --verbose
+
+# Check which tests failed
+cargo test --workspace 2>&1 | grep "FAILED"
+
+# Run single test with output
+cargo test specific_test_name -- --nocapture
+
+# Check WASM binary
+file target/wasm32-unknown-unknown/release/hologram_backends.wasm
+wasm-validate target/wasm32-unknown-unknown/release/hologram_backends.wasm
+```
+
+---
+
+**Last Updated**: 2025-11-05
+**Maintained By**: Hologram Core Team
+**Status**: Active - In Use for CI/CD

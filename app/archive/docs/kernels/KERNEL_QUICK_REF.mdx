@@ -1,0 +1,291 @@
+---
+title: "Kernel Quick Reference Card"
+description: "Kernel Quick Reference Card documentation"
+---
+
+# Kernel Quick Reference Card
+
+Quick reference for adding kernels to Hologram. See [ADDING_KERNELS.md](ADDING_KERNELS.md) for details.
+
+## File Locations
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Python Schema | `schemas/stdlib/<category>/<name>.py` | Kernel definition |
+| JSON Schema | `target/json/<name>.json` | Auto-generated IR |
+| ISA Translator | `crates/hologram-backends/src/json_to_isa.rs` | JSON→ISA compiler |
+| FFI Module | `crates/hologram-ffi/src/<category>.rs` | FFI bindings |
+| FFI Registry | `crates/hologram-ffi/src/lib.rs` | Module exports |
+| FFI Interface | `crates/hologram-ffi/src/hologram_ffi.udl` | UniFFI definition |
+| Integration Tests | `crates/hologram-ffi/tests/compile_test.rs` | End-to-end tests |
+
+## Operation Types
+
+| Type | Pattern | Auto-Translation | Example |
+|------|---------|------------------|---------|
+| **Binary** | 2 inputs + 1 output | ✅ Yes | `add`, `mul`, `min`, `max` |
+| **Unary** | 1 input + 1 output | ✅ Yes | `neg`, `abs`, `sin`, `cos` |
+| **Reduction** | N inputs → 1 output | ❌ Custom required | `sum`, `min`, `max` |
+| **Complex** | Custom logic | ❌ Custom required | `relu`, `softmax` |
+
+## Python Template (Binary Op)
+
+```python
+def vector_op(a: DeviceArray[f32], b: DeviceArray[f32], c: DeviceArray[f32], n: u32):
+    """Operation: c = op(a, b)"""
+    idx = get_global_id()
+    if idx < n:
+        c[idx] = a[idx] + b[idx]  # Replace with your operation
+```
+
+## Python Template (Unary Op)
+
+```python
+def vector_op(a: DeviceArray[f32], c: DeviceArray[f32], n: u32):
+    """Operation: c = op(a)"""
+    idx = get_global_id()
+    if idx < n:
+        c[idx] = -a[idx]  # Replace with your operation
+```
+
+## ISA Translation (Simple Binary)
+
+```rust
+// In translate_binary_op() - add name mapping
+} else if name.contains("your_op") {
+    Box::new(|src1, src2, dst| Instruction::YOUR_OP {
+        ty: Type::F32,
+        dst,
+        src1,
+        src2,
+    })
+```
+
+## ISA Translation (Simple Unary)
+
+```rust
+// In translate_unary_op() - add name mapping
+} else if name.contains("your_op") {
+    Box::new(|src, dst| Instruction::YOUR_OP {
+        ty: Type::F32,
+        dst,
+        src,
+    })
+```
+
+## ISA Translation (Complex - Skeleton)
+
+```rust
+fn translate_your_op(_json: &JsonSchema) -> Result<Program, String> {
+    use crate::isa::special_registers::*;
+    use crate::isa::{Address, Condition, Instruction, Label, Predicate, Program, Register, Type};
+    use std::collections::HashMap;
+
+    let mut labels = HashMap::new();
+    let exit_label = "bounds_exit";
+
+    let instructions = vec![
+        // 1. Bounds check
+        Instruction::SETcc {
+            ty: Type::U64, cond: Condition::GEU,
+            dst: Predicate::new(0),
+            src1: GLOBAL_LANE_ID, src2: Register(4),
+        },
+        Instruction::BRA {
+            target: Label::new(exit_label),
+            pred: Some(Predicate::new(0)),
+        },
+
+        // 2. Compute offset
+        Instruction::MOV_IMM { ty: Type::U32, dst: Register(250), value: 2 },
+        Instruction::SHL {
+            ty: Type::U64, dst: Register(0),
+            src: GLOBAL_LANE_ID, amount: Register(250),
+        },
+
+        // 3. Load inputs
+        Instruction::LDG {
+            ty: Type::F32, dst: Register(10),
+            addr: Address::RegisterIndirectComputed {
+                handle_reg: Register(1), offset_reg: Register(0),
+            },
+        },
+
+        // 4. Compute (YOUR LOGIC HERE)
+        // ...
+
+        // 5. Store result
+        Instruction::STG {
+            ty: Type::F32, src: Register(12),
+            addr: Address::RegisterIndirectComputed {
+                handle_reg: Register(3), offset_reg: Register(0),
+            },
+        },
+
+        // 6. Exit
+        Instruction::LABEL { name: Label::new(exit_label) },
+        Instruction::EXIT,
+    ];
+
+    labels.insert(exit_label.to_string(), instructions.len() - 2);
+    Ok(Program { instructions, labels })
+}
+```
+
+## FFI Template (Binary Op)
+
+```rust
+pub fn your_op_f32(
+    executor_handle: u64,
+    a_handle: u64,
+    b_handle: u64,
+    c_handle: u64,
+    n: u32,
+) {
+    let mut exec_registry = lock_registry(&EXECUTOR_REGISTRY);
+    let executor = exec_registry.get_mut(&executor_handle).unwrap();
+
+    let mut buf_registry = lock_registry(&BUFFER_REGISTRY);
+    let a = buf_registry.get(&a_handle).unwrap();
+    let b = buf_registry.get(&b_handle).unwrap();
+    let c = buf_registry.get_mut(&c_handle).unwrap();
+
+    category::your_op(executor, a, b, c, n as usize)
+        .expect("Operation failed");
+}
+```
+
+## Test Template
+
+```rust
+#[test]
+fn test_your_op() {
+    let exec = new_executor();
+    let buf_a = executor_allocate_buffer(exec, 4);
+    let buf_b = executor_allocate_buffer(exec, 4);
+    let buf_c = executor_allocate_buffer(exec, 4);
+
+    // Setup
+    let data_a = vec![1.0, 2.0, 3.0, 4.0];
+    let data_b = vec![5.0, 6.0, 7.0, 8.0];
+    buffer_copy_from_slice(exec, buf_a, serde_json::to_string(&data_a).unwrap());
+    buffer_copy_from_slice(exec, buf_b, serde_json::to_string(&data_b).unwrap());
+
+    // Execute
+    your_op_f32(exec, buf_a, buf_b, buf_c, 4);
+
+    // Verify
+    let result: Vec<f32> = serde_json::from_str(
+        &buffer_to_vec(exec, buf_c)
+    ).unwrap();
+    let expected = vec![6.0, 8.0, 10.0, 12.0];
+
+    for (i, &v) in result.iter().enumerate() {
+        assert!((v - expected[i]).abs() < 0.001);
+    }
+
+    // Cleanup
+    buffer_cleanup(buf_a);
+    buffer_cleanup(buf_b);
+    buffer_cleanup(buf_c);
+    executor_cleanup(exec);
+}
+```
+
+## Register Allocation
+
+| Register(s) | Purpose |
+|-------------|---------|
+| `R1` | Input buffer handle A |
+| `R2` | Input buffer handle B |
+| `R3` | Output buffer handle |
+| `R4` | Size parameter (n) |
+| `R0` | Byte offset |
+| `R10-R20` | Input values |
+| `R21-R30` | Intermediate results |
+| `R250-R254` | Temporaries/constants |
+| `P0-P3` | Predicates |
+| `GLOBAL_LANE_ID` | Thread index |
+
+## Supported Python Syntax
+
+| Feature | Supported | Example |
+|---------|-----------|---------|
+| Binary ops | ✅ | `a + b`, `a * b`, `a / b` |
+| Unary ops | ✅ | `-a`, `+a` |
+| Comparisons | ✅ | `a < b`, `a == b` |
+| Array indexing | ✅ | `a[idx]`, `a[idx] = value` |
+| Function calls | ✅ | `get_global_id()`, `min(a, b)` |
+| If/else | ✅ | `if condition: ... else: ...` |
+| For loops | ✅ | `for i in range(n): ...` |
+| Variables | ✅ | `value = a[idx]` |
+| Ternary | ❌ | `a if c else b` |
+| Boolean ops | ❌ | `and`, `or`, `not` |
+| Slicing | ❌ | `a[0:10]` |
+
+## Verification Commands
+
+```bash
+# Full verification sequence
+cargo clean
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
+
+# Check operation was compiled
+grep "pub static YOUR_OP:" target/debug/build/hologram-core-*/out/precompiled_ops.rs
+
+# Check JSON generation
+cat target/json/your_op.json
+```
+
+## Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| Python→JSON fails | Check syntax against supported features |
+| JSON→ISA fails | Add name mapping or custom translator |
+| Operation not precompiled | Check build output for errors |
+| FFI tests fail | Verify buffer sizes and handle order |
+| Clippy warnings | Fix before committing |
+
+## Workflow Summary
+
+1. **Write** Python schema → `schemas/stdlib/<cat>/<op>.py`
+2. **Build** → Verify JSON in `target/json/<op>.json`
+3. **Translate** → Add ISA mapping if needed
+4. **Bind** → Add FFI function in `hologram-ffi/src/<cat>.rs`
+5. **Test** → Add integration test
+6. **Verify** → Build + test + clippy all pass
+
+## Example: Adding `vector_clamp`
+
+```bash
+# 1. Create schema
+cat > schemas/stdlib/vector/clamp.py << 'EOF'
+def vector_clamp(a: DeviceArray[f32], min_val: f32, max_val: f32,
+                 c: DeviceArray[f32], n: u32):
+    """Clamp values: c = clamp(a, min_val, max_val)"""
+    idx = get_global_id()
+    if idx < n:
+        value = a[idx]
+        if value < min_val:
+            c[idx] = min_val
+        elif value > max_val:
+            c[idx] = max_val
+        else:
+            c[idx] = value
+EOF
+
+# 2. Mark as complex (needs custom ISA translation)
+# Edit json_to_isa.rs to add translation
+
+# 3. Add FFI binding
+# Edit hologram-ffi/src/math.rs
+
+# 4. Add test
+# Edit hologram-ffi/tests/compile_test.rs
+
+# 5. Verify
+cargo clean && cargo build --workspace && cargo test --workspace
+```

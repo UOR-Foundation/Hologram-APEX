@@ -1,0 +1,1101 @@
+---
+title: "MoonshineHRM ONNX Compiler - Examples"
+description: "MoonshineHRM ONNX Compiler - Examples documentation"
+---
+
+# MoonshineHRM ONNX Compiler - Examples
+
+**Version**: 1.0
+**Last Updated**: 2025-11-13
+
+## Table of Contents
+
+1. [Quick Start](#quick-start)
+2. [Basic Compilation](#basic-compilation)
+3. [Runtime Usage](#runtime-usage)
+4. [Multi-Threaded Inference](#multi-threaded-inference)
+5. [Error Handling](#error-handling)
+6. [Advanced Compilation](#advanced-compilation)
+7. [WASM Deployment](#wasm-deployment)
+8. [CLI Usage](#cli-usage)
+9. [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+10. [Performance Tuning](#performance-tuning)
+
+---
+
+## Quick Start
+
+### Compile an ONNX Model
+
+```rust
+use hologram_onnx_compiler::{Pass1Collector, Pass2EmbeddingCache, Pass3PreComputer, Pass4BinaryGenerator};
+use hologram_hrm::Atlas;
+use std::path::Path;
+
+async fn compile_model(onnx_path: &Path, output_path: &Path) -> Result<()> {
+    // Load ONNX model
+    let onnx_bytes = std::fs::read(onnx_path)?;
+
+    // Pass 1: Collect and analyze
+    let mut collector = Pass1Collector::new().with_verbose(true);
+    let manifest = collector.collect_and_analyze(&onnx_bytes, None)?;
+    println!("Collected {} unique values", manifest.unique_values.len());
+
+    // Pass 2: Build embedding cache
+    let atlas = Arc::new(Atlas::with_cache()?);
+    let mut cache_builder = Pass2EmbeddingCache::new(atlas.clone())
+        .with_verbose(true)
+        .with_parallel(true);
+    let cache = cache_builder.build_cache(&manifest)?;
+    println!("Built cache with {} embeddings", cache.embeddings.len());
+
+    // Pass 3: Pre-compute results
+    let mut precomputer = Pass3PreComputer::new(atlas.clone())
+        .with_verbose(true)
+        .with_parallel(true);
+    let factorized = precomputer.precompute_all_results(&manifest, &cache).await?;
+    println!("Pre-computed {} hash tables", factorized.hash_tables.len());
+
+    // Pass 4: Generate binary
+    let mut generator = Pass4BinaryGenerator::new()
+        .with_verbose(true);
+    generator.generate_binary(&factorized, &manifest, output_path)?;
+    println!("Generated binary at {:?}", output_path);
+
+    Ok(())
+}
+```
+
+### Load and Use Compiled Model
+
+```rust
+use hologram_onnx::MountedModel;
+
+fn run_inference(model_path: &Path, input_pattern: &[f32]) -> Result<Vec<f32>> {
+    // Load compiled model (zero-copy, <100µs)
+    let model = MountedModel::load(model_path)?;
+
+    // Get model metadata
+    let metadata = model.metadata();
+    println!("Model has {} operations", metadata.num_nodes);
+
+    // Perform O(1) lookup-based inference
+    let op_id = 0;
+    let result_address = model.lookup_operation(op_id, input_pattern)?;
+
+    // Read result from address space
+    let result = model.read_result(&result_address)?;
+
+    Ok(result)
+}
+```
+
+---
+
+## Basic Compilation
+
+### Example 1: Simple ONNX Model (Add Operation)
+
+```rust
+use hologram_onnx_compiler::*;
+use hologram_hrm::Atlas;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Create a simple ONNX model with one Add node
+    let onnx_bytes = create_simple_add_model()?;
+
+    // Pass 1: Analyze model
+    let mut collector = Pass1Collector::new();
+    let manifest = collector.collect_and_analyze(&onnx_bytes, None)?;
+
+    // Check what we found
+    println!("Operations: {:?}", manifest.operations.iter()
+        .map(|op| &op.op_type)
+        .collect::<Vec<_>>());
+    println!("Unique values: {}", manifest.unique_values.len());
+    println!("Estimated patterns: {}", manifest.estimated_total_patterns);
+
+    // Pass 2: Embed values
+    let atlas = Arc::new(Atlas::with_cache()?);
+    let mut cache_builder = Pass2EmbeddingCache::new(atlas.clone());
+    let cache = cache_builder.build_cache(&manifest)?;
+
+    // Pass 3: Pre-compute
+    let mut precomputer = Pass3PreComputer::new(atlas);
+    let factorized = precomputer.precompute_all_results(&manifest, &cache).await?;
+
+    // Pass 4: Write binary
+    let mut generator = Pass4BinaryGenerator::new();
+    generator.generate_binary(&factorized, &manifest, "add_model.mshr")?;
+
+    println!("Compilation complete!");
+    Ok(())
+}
+
+fn create_simple_add_model() -> Result<Vec<u8>> {
+    // Use prost or onnx-rs to create a simple Add operation
+    // For demonstration, return placeholder ONNX bytes
+    Ok(vec![/* ONNX protobuf bytes */])
+}
+```
+
+---
+
+### Example 2: Compilation with Custom Discretization
+
+```rust
+use hologram_onnx_compiler::*;
+use std::collections::HashMap;
+
+async fn compile_with_custom_discretization(onnx_bytes: &[u8]) -> Result<()> {
+    // Pass 1: Analyze
+    let mut collector = Pass1Collector::new();
+    let mut manifest = collector.collect_and_analyze(onnx_bytes, None)?;
+
+    // Customize discretization strategies
+    for (op_id, op_stats) in manifest.operations.iter().enumerate() {
+        let strategy = match op_stats.op_type.as_str() {
+            "MatMul" | "Gemm" => {
+                // Use 8-bit quantization for matrix operations
+                DiscretizationStrategy::Quantized {
+                    bits: 8,
+                    scale: 1.0,
+                    zero_point: 128,
+                }
+            }
+            "Add" | "Sub" => {
+                // Use vocabulary for simple arithmetic
+                DiscretizationStrategy::Vocabulary {
+                    size: 256,
+                    values: (-128..128).map(|i| i as f32).collect(),
+                }
+            }
+            "Relu" | "Sigmoid" => {
+                // Use hashed buckets for activations
+                DiscretizationStrategy::HashedBuckets {
+                    num_buckets: 1000,
+                    bucket_ranges: create_activation_buckets(-10.0, 10.0, 1000),
+                }
+            }
+            _ => {
+                // Default: clustered strategy
+                DiscretizationStrategy::Clustered {
+                    num_clusters: 100,
+                    centroids: vec![0.0; 100], // Placeholder
+                }
+            }
+        };
+
+        manifest.discretization_strategies.insert(op_id, strategy);
+    }
+
+    // Continue with Pass 2-4 as normal...
+    Ok(())
+}
+
+fn create_activation_buckets(min: f32, max: f32, count: usize) -> Vec<(f32, f32)> {
+    let step = (max - min) / count as f32;
+    (0..count)
+        .map(|i| {
+            let start = min + i as f32 * step;
+            let end = start + step;
+            (start, end)
+        })
+        .collect()
+}
+```
+
+---
+
+### Example 3: Compilation with Training Data
+
+```rust
+use hologram_onnx_compiler::*;
+
+async fn compile_with_training_data(
+    onnx_bytes: &[u8],
+    training_inputs: &[Vec<f32>]
+) -> Result<()> {
+    // Pass 1: Analyze with training data
+    let mut collector = Pass1Collector::new().with_verbose(true);
+
+    // Training data helps determine optimal discretization
+    let manifest = collector.collect_and_analyze(onnx_bytes, Some(training_inputs))?;
+
+    // The collector will:
+    // - Analyze input distributions
+    // - Choose optimal quantization levels
+    // - Select representative patterns
+    // - Estimate accuracy vs. memory trade-offs
+
+    println!("Analyzed {} training samples", training_inputs.len());
+    println!("Estimated accuracy: {:.2}%", estimate_accuracy(&manifest));
+
+    // Continue with Pass 2-4...
+    Ok(())
+}
+
+fn estimate_accuracy(manifest: &CollectionManifest) -> f32 {
+    // Estimate based on discretization strategies
+    let total_patterns: usize = manifest.discretization_strategies.values()
+        .map(|strategy| match strategy {
+            DiscretizationStrategy::Quantized { bits, .. } => 1 << bits,
+            DiscretizationStrategy::Vocabulary { size, .. } => *size,
+            DiscretizationStrategy::HashedBuckets { num_buckets, .. } => *num_buckets,
+            DiscretizationStrategy::Clustered { num_clusters, .. } => *num_clusters,
+        })
+        .sum();
+
+    // More patterns → higher accuracy (simplified estimate)
+    (total_patterns as f32 / 10000.0).min(1.0) * 100.0
+}
+```
+
+---
+
+## Runtime Usage
+
+### Example 4: Basic Inference
+
+```rust
+use hologram_onnx::MountedModel;
+use std::path::Path;
+
+fn basic_inference() -> Result<()> {
+    // Load compiled model
+    let model = MountedModel::load("model.mshr")?;
+
+    // Get metadata
+    let metadata = model.metadata();
+    println!("Model info:");
+    println!("  Nodes: {}", metadata.num_nodes);
+    println!("  Inputs: {}", metadata.num_inputs);
+    println!("  Outputs: {}", metadata.num_outputs);
+
+    // Get input/output names
+    let input_names = model.input_names();
+    let output_names = model.output_names();
+    println!("  Input names: {:?}", input_names);
+    println!("  Output names: {:?}", output_names);
+
+    // Prepare input pattern
+    let input_pattern = vec![1.0, 2.0, 3.0, 4.0];
+
+    // Perform lookup for operation 0
+    let result_address = model.lookup_operation(0, &input_pattern)?;
+    println!("Result address: {:?}", result_address);
+
+    // Read result
+    let result = model.read_result(&result_address)?;
+    println!("Result: {:?}", result);
+
+    Ok(())
+}
+```
+
+---
+
+### Example 5: Batch Inference
+
+```rust
+use hologram_onnx::MountedModel;
+
+fn batch_inference(model_path: &Path, inputs: &[Vec<f32>]) -> Result<Vec<Vec<f32>>> {
+    let model = MountedModel::load(model_path)?;
+
+    let mut results = Vec::with_capacity(inputs.len());
+
+    for input in inputs {
+        // Each lookup is O(1), ~35ns
+        let result_address = model.lookup_operation(0, input)?;
+        let result = model.read_result(&result_address)?;
+        results.push(result);
+    }
+
+    Ok(results)
+}
+
+fn main() -> Result<()> {
+    let model_path = Path::new("model.mshr");
+
+    // Prepare batch of inputs
+    let inputs: Vec<Vec<f32>> = (0..1000)
+        .map(|i| vec![i as f32, (i + 1) as f32, (i + 2) as f32])
+        .collect();
+
+    // Run batch inference
+    let start = std::time::Instant::now();
+    let results = batch_inference(model_path, &inputs)?;
+    let elapsed = start.elapsed();
+
+    println!("Processed {} inputs in {:?}", inputs.len(), elapsed);
+    println!("Throughput: {:.2} inferences/sec",
+        inputs.len() as f64 / elapsed.as_secs_f64());
+
+    Ok(())
+}
+```
+
+---
+
+### Example 6: Sequential Operation Execution
+
+```rust
+use hologram_onnx::MountedModel;
+
+fn execute_model_graph(model_path: &Path, input: &[f32]) -> Result<Vec<f32>> {
+    let model = MountedModel::load(model_path)?;
+    let metadata = model.metadata();
+
+    let mut current_input = input.to_vec();
+
+    // Execute operations sequentially
+    for op_id in 0..metadata.num_nodes {
+        // Lookup result for current operation
+        let result_address = model.lookup_operation(op_id, &current_input)?;
+        let result = model.read_result(&result_address)?;
+
+        // Use result as input for next operation
+        current_input = result;
+
+        println!("Op {}: {:?}", op_id, &current_input[..4.min(current_input.len())]);
+    }
+
+    Ok(current_input)
+}
+```
+
+---
+
+## Multi-Threaded Inference
+
+### Example 7: Parallel Inference with Arc
+
+```rust
+use hologram_onnx::MountedModel;
+use std::sync::Arc;
+use std::thread;
+
+fn parallel_inference(model_path: &Path, inputs: Vec<Vec<f32>>) -> Result<Vec<Vec<f32>>> {
+    // Load model once, share across threads
+    let model = Arc::new(MountedModel::load(model_path)?);
+
+    let num_threads = 8;
+    let chunk_size = (inputs.len() + num_threads - 1) / num_threads;
+
+    let handles: Vec<_> = inputs
+        .chunks(chunk_size)
+        .enumerate()
+        .map(|(thread_id, chunk)| {
+            let model = Arc::clone(&model);
+            let chunk = chunk.to_vec();
+
+            thread::spawn(move || -> Result<Vec<Vec<f32>>> {
+                let mut results = Vec::with_capacity(chunk.len());
+
+                for input in chunk {
+                    let result_address = model.lookup_operation(0, &input)?;
+                    let result = model.read_result(&result_address)?;
+                    results.push(result);
+                }
+
+                println!("Thread {} processed {} inputs", thread_id, results.len());
+                Ok(results)
+            })
+        })
+        .collect();
+
+    // Collect results from all threads
+    let mut all_results = Vec::new();
+    for handle in handles {
+        let thread_results = handle.join().unwrap()?;
+        all_results.extend(thread_results);
+    }
+
+    Ok(all_results)
+}
+
+fn main() -> Result<()> {
+    let inputs: Vec<Vec<f32>> = (0..10000)
+        .map(|i| vec![i as f32; 100])
+        .collect();
+
+    let start = std::time::Instant::now();
+    let results = parallel_inference(Path::new("model.mshr"), inputs)?;
+    let elapsed = start.elapsed();
+
+    println!("Processed {} inputs in {:?}", results.len(), elapsed);
+    println!("Throughput: {:.2} inferences/sec",
+        results.len() as f64 / elapsed.as_secs_f64());
+
+    Ok(())
+}
+```
+
+---
+
+### Example 8: Thread Pool for Continuous Inference
+
+```rust
+use hologram_onnx::MountedModel;
+use std::sync::{Arc, mpsc};
+use std::thread;
+
+struct InferenceRequest {
+    input: Vec<f32>,
+    response_tx: mpsc::Sender<Vec<f32>>,
+}
+
+fn inference_server(model_path: &Path, num_workers: usize) -> Result<mpsc::Sender<InferenceRequest>> {
+    let (request_tx, request_rx) = mpsc::channel::<InferenceRequest>();
+    let request_rx = Arc::new(std::sync::Mutex::new(request_rx));
+
+    let model = Arc::new(MountedModel::load(model_path)?);
+
+    // Spawn worker threads
+    for worker_id in 0..num_workers {
+        let model = Arc::clone(&model);
+        let request_rx = Arc::clone(&request_rx);
+
+        thread::spawn(move || {
+            loop {
+                // Get next request
+                let request = {
+                    let rx = request_rx.lock().unwrap();
+                    rx.recv()
+                };
+
+                match request {
+                    Ok(InferenceRequest { input, response_tx }) => {
+                        // Perform inference
+                        let result = model.lookup_operation(0, &input)
+                            .and_then(|addr| model.read_result(&addr));
+
+                        if let Ok(result) = result {
+                            let _ = response_tx.send(result);
+                        }
+                    }
+                    Err(_) => break, // Channel closed
+                }
+            }
+            println!("Worker {} shutting down", worker_id);
+        });
+    }
+
+    Ok(request_tx)
+}
+
+fn main() -> Result<()> {
+    // Start inference server with 4 workers
+    let request_tx = inference_server(Path::new("model.mshr"), 4)?;
+
+    // Submit requests
+    for i in 0..100 {
+        let (response_tx, response_rx) = mpsc::channel();
+        let input = vec![i as f32; 10];
+
+        request_tx.send(InferenceRequest { input, response_tx })?;
+
+        // Wait for result
+        let result = response_rx.recv()?;
+        println!("Request {}: result = {:?}", i, &result[..4]);
+    }
+
+    Ok(())
+}
+```
+
+---
+
+## Error Handling
+
+### Example 9: Comprehensive Error Handling
+
+```rust
+use hologram_onnx_compiler::*;
+use hologram_onnx::MountedModel;
+
+fn compile_with_error_handling(onnx_path: &Path) -> Result<()> {
+    // Load ONNX file with error handling
+    let onnx_bytes = std::fs::read(onnx_path)
+        .map_err(|e| format!("Failed to read ONNX file: {}", e))?;
+
+    // Pass 1: Collect with error handling
+    let mut collector = Pass1Collector::new();
+    let manifest = match collector.collect_and_analyze(&onnx_bytes, None) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Pass 1 failed: {}", e);
+            eprintln!("Possible causes:");
+            eprintln!("  - Invalid ONNX protobuf format");
+            eprintln!("  - Unsupported ONNX opset version");
+            eprintln!("  - Corrupted model file");
+            return Err(e);
+        }
+    };
+
+    // Validate manifest
+    if manifest.unique_values.is_empty() {
+        eprintln!("Warning: No unique values found in model");
+    }
+    if manifest.operations.is_empty() {
+        return Err("Model has no operations".into());
+    }
+
+    // Pass 2: Build cache with error handling
+    let atlas = Arc::new(match Atlas::with_cache() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Failed to load Atlas: {}", e);
+            eprintln!("Possible solutions:");
+            eprintln!("  - Generate Atlas: hologram-hrm generate-atlas");
+            eprintln!("  - Check disk space (~15GB required)");
+            eprintln!("  - Verify file permissions");
+            return Err(e);
+        }
+    });
+
+    let mut cache_builder = Pass2EmbeddingCache::new(atlas.clone())
+        .with_verbose(true);
+
+    let cache = match cache_builder.build_cache(&manifest) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Pass 2 failed: {}", e);
+            eprintln!("Possible causes:");
+            eprintln!("  - Out of memory (~7.5GB per 10K values)");
+            eprintln!("  - Invalid embedding dimensions");
+            return Err(e);
+        }
+    };
+
+    println!("Compilation successful!");
+    Ok(())
+}
+
+fn load_with_error_handling(model_path: &Path) -> Result<MountedModel> {
+    match MountedModel::load(model_path) {
+        Ok(model) => {
+            println!("Model loaded successfully");
+            Ok(model)
+        }
+        Err(e) => {
+            eprintln!("Failed to load model: {}", e);
+            eprintln!("Troubleshooting:");
+            eprintln!("  - Check file exists: {:?}", model_path);
+            eprintln!("  - Verify magic bytes (should be 'MSHR')");
+            eprintln!("  - Check file permissions");
+            eprintln!("  - Ensure file is not corrupted");
+
+            // Check if file exists
+            if !model_path.exists() {
+                eprintln!("  ERROR: File does not exist");
+            }
+
+            // Check file size
+            if let Ok(metadata) = std::fs::metadata(model_path) {
+                eprintln!("  File size: {} bytes", metadata.len());
+                if metadata.len() < 72 {
+                    eprintln!("  ERROR: File too small (header is 72 bytes)");
+                }
+            }
+
+            Err(e)
+        }
+    }
+}
+```
+
+---
+
+### Example 10: Graceful Degradation
+
+```rust
+use hologram_onnx::MountedModel;
+
+fn inference_with_fallback(model_path: &Path, input: &[f32]) -> Vec<f32> {
+    match MountedModel::load(model_path) {
+        Ok(model) => {
+            // Try MoonshineHRM inference
+            match model.lookup_operation(0, input)
+                .and_then(|addr| model.read_result(&addr)) {
+                Ok(result) => {
+                    println!("MoonshineHRM inference successful");
+                    return result;
+                }
+                Err(e) => {
+                    eprintln!("MoonshineHRM inference failed: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to load MoonshineHRM model: {}", e);
+        }
+    }
+
+    // Fallback: CPU-based inference
+    eprintln!("Falling back to CPU inference");
+    cpu_inference(input)
+}
+
+fn cpu_inference(input: &[f32]) -> Vec<f32> {
+    // Simple CPU-based computation
+    input.iter().map(|&x| x * 2.0).collect()
+}
+```
+
+---
+
+## Advanced Compilation
+
+### Example 11: Progress Tracking
+
+```rust
+use hologram_onnx_compiler::*;
+use std::sync::{Arc, Mutex};
+
+struct ProgressTracker {
+    current: Arc<Mutex<usize>>,
+    total: usize,
+}
+
+impl ProgressTracker {
+    fn new(total: usize) -> Self {
+        Self {
+            current: Arc::new(Mutex::new(0)),
+            total,
+        }
+    }
+
+    fn update(&self, increment: usize) {
+        let mut current = self.current.lock().unwrap();
+        *current += increment;
+        let percent = (*current as f64 / self.total as f64) * 100.0;
+        println!("Progress: {:.1}% ({}/{})", percent, *current, self.total);
+    }
+}
+
+async fn compile_with_progress(onnx_bytes: &[u8]) -> Result<()> {
+    // Pass 1
+    println!("=== Pass 1: Collection ===");
+    let mut collector = Pass1Collector::new().with_verbose(true);
+    let manifest = collector.collect_and_analyze(onnx_bytes, None)?;
+    println!("✓ Pass 1 complete\n");
+
+    // Pass 2
+    println!("=== Pass 2: Embedding ===");
+    let tracker = ProgressTracker::new(manifest.unique_values.len());
+    let atlas = Arc::new(Atlas::with_cache()?);
+
+    let mut cache_builder = Pass2EmbeddingCache::new(atlas.clone())
+        .with_verbose(false) // Use custom progress
+        .with_parallel(true);
+
+    // Custom progress callback
+    let cache = cache_builder.build_cache_with_progress(&manifest, |completed, total| {
+        let percent = (completed as f64 / total as f64) * 100.0;
+        print!("\rEmbedding progress: {:.1}% ({}/{})", percent, completed, total);
+        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+    })?;
+    println!("\n✓ Pass 2 complete\n");
+
+    // Pass 3
+    println!("=== Pass 3: Pre-computation ===");
+    let mut precomputer = Pass3PreComputer::new(atlas)
+        .with_verbose(true)
+        .with_parallel(true);
+
+    let factorized = precomputer.precompute_all_results(&manifest, &cache).await?;
+    println!("✓ Pass 3 complete\n");
+
+    // Pass 4
+    println!("=== Pass 4: Binary Generation ===");
+    let mut generator = Pass4BinaryGenerator::new().with_verbose(true);
+    generator.generate_binary(&factorized, &manifest, "model.mshr")?;
+    println!("✓ Pass 4 complete\n");
+
+    println!("🎉 Compilation successful!");
+    Ok(())
+}
+```
+
+---
+
+### Example 12: Memory-Constrained Compilation
+
+```rust
+use hologram_onnx_compiler::*;
+
+async fn compile_memory_efficient(onnx_bytes: &[u8]) -> Result<()> {
+    // Pass 1: Standard
+    let mut collector = Pass1Collector::new();
+    let manifest = collector.collect_and_analyze(onnx_bytes, None)?;
+
+    // Check memory requirements
+    let estimated_memory_gb = manifest.estimated_memory_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+    println!("Estimated memory: {:.2} GB", estimated_memory_gb);
+
+    // Pass 2: Disable parallelization to reduce memory
+    let atlas = Arc::new(Atlas::with_cache()?);
+    let mut cache_builder = Pass2EmbeddingCache::new(atlas.clone())
+        .with_parallel(false); // Sequential to save memory
+
+    let cache = cache_builder.build_cache(&manifest)?;
+
+    // Clear manifest to free memory
+    drop(manifest);
+
+    // Pass 3: Process in chunks
+    let mut precomputer = Pass3PreComputer::new(atlas)
+        .with_parallel(false)  // Sequential
+        .with_chunk_size(100); // Process 100 patterns at a time
+
+    let factorized = precomputer.precompute_all_results_chunked(&cache).await?;
+
+    // Pass 4: Stream to disk
+    let mut generator = Pass4BinaryGenerator::new();
+    generator.generate_binary_streaming(&factorized, "model.mshr")?;
+
+    Ok(())
+}
+```
+
+---
+
+## WASM Deployment
+
+### Example 13: WASM Compilation
+
+```rust
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub struct WasmModel {
+    model: MountedModel,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WasmModel {
+    #[wasm_bindgen(constructor)]
+    pub fn new(model_bytes: &[u8]) -> Result<WasmModel, JsValue> {
+        // Load model from bytes (no mmap in WASM)
+        let model = MountedModel::from_bytes(model_bytes)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        Ok(WasmModel { model })
+    }
+
+    #[wasm_bindgen]
+    pub fn infer(&self, input: Vec<f32>) -> Result<Vec<f32>, JsValue> {
+        let result_address = self.model.lookup_operation(0, &input)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        let result = self.model.read_result(&result_address)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        Ok(result)
+    }
+
+    #[wasm_bindgen]
+    pub fn get_metadata(&self) -> String {
+        let metadata = self.model.metadata();
+        serde_json::to_string(&metadata).unwrap_or_default()
+    }
+}
+```
+
+---
+
+### Example 14: JavaScript Usage (WASM)
+
+```javascript
+import init, { WasmModel } from './hologram_onnx.js';
+
+async function runInference() {
+    // Initialize WASM module
+    await init();
+
+    // Load compiled model
+    const response = await fetch('model.mshr');
+    const modelBytes = new Uint8Array(await response.arrayBuffer());
+
+    // Create model instance
+    const model = new WasmModel(modelBytes);
+
+    // Get metadata
+    const metadata = JSON.parse(model.get_metadata());
+    console.log('Model info:', metadata);
+
+    // Prepare input
+    const input = new Float32Array([1.0, 2.0, 3.0, 4.0]);
+
+    // Run inference
+    const result = model.infer(Array.from(input));
+    console.log('Result:', result);
+}
+
+runInference().catch(console.error);
+```
+
+---
+
+### Example 15: WASM with Web Workers
+
+```javascript
+// worker.js
+importScripts('./hologram_onnx.js');
+
+let model = null;
+
+self.onmessage = async function(e) {
+    const { type, data } = e.data;
+
+    if (type === 'load') {
+        // Load model in worker
+        await wasm_bindgen('./hologram_onnx_bg.wasm');
+        model = new wasm_bindgen.WasmModel(data.modelBytes);
+        self.postMessage({ type: 'ready' });
+
+    } else if (type === 'infer') {
+        // Run inference in worker
+        const result = model.infer(data.input);
+        self.postMessage({ type: 'result', result });
+    }
+};
+
+// main.js
+const worker = new Worker('worker.js');
+
+worker.onmessage = function(e) {
+    const { type, result } = e.data;
+
+    if (type === 'ready') {
+        console.log('Model loaded in worker');
+
+        // Send inference request
+        worker.postMessage({
+            type: 'infer',
+            data: { input: [1.0, 2.0, 3.0, 4.0] }
+        });
+
+    } else if (type === 'result') {
+        console.log('Inference result:', result);
+    }
+};
+
+// Load model
+fetch('model.mshr')
+    .then(r => r.arrayBuffer())
+    .then(buffer => {
+        worker.postMessage({
+            type: 'load',
+            data: { modelBytes: new Uint8Array(buffer) }
+        });
+    });
+```
+
+---
+
+## CLI Usage
+
+### Example 16: Command-Line Compilation
+
+```bash
+# Compile ONNX model to .mshr
+hologram-onnx-compiler compile \
+    --input model.onnx \
+    --output model.mshr \
+    --verbose \
+    --parallel
+
+# Compile with custom discretization
+hologram-onnx-compiler compile \
+    --input model.onnx \
+    --output model.mshr \
+    --quantization-bits 8 \
+    --num-patterns 10000
+
+# Compile with training data
+hologram-onnx-compiler compile \
+    --input model.onnx \
+    --output model.mshr \
+    --training-data training_inputs.npy
+```
+
+---
+
+### Example 17: Inspecting Compiled Models
+
+```bash
+# Show model metadata
+hologram-onnx-compiler inspect model.mshr
+
+# Output:
+# Magic: MSHR
+# Version: 1
+# Operations: 42
+# Unique values: 1,234
+# Estimated patterns: 100,000
+# File size: 16.5 MB
+
+# Validate model integrity
+hologram-onnx-compiler validate model.mshr
+
+# Benchmark inference
+hologram-onnx-compiler benchmark model.mshr --iterations 10000
+```
+
+---
+
+## Debugging and Troubleshooting
+
+### Example 18: Verbose Compilation
+
+```rust
+use hologram_onnx_compiler::*;
+
+async fn debug_compilation(onnx_bytes: &[u8]) -> Result<()> {
+    // Enable verbose logging for all passes
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+
+    // Pass 1: Verbose
+    let mut collector = Pass1Collector::new().with_verbose(true);
+    let manifest = collector.collect_and_analyze(onnx_bytes, None)?;
+
+    println!("=== Manifest Debug ===");
+    println!("Unique values: {}", manifest.unique_values.len());
+    for (i, value) in manifest.unique_values.iter().take(10).enumerate() {
+        println!("  [{}] {}", i, value);
+    }
+
+    println!("\nOperations:");
+    for op in &manifest.operations {
+        println!("  {} (id={}): {} inputs, {} outputs",
+            op.op_type, op.op_id,
+            op.input_shapes.len(), op.output_shapes.len());
+    }
+
+    println!("\nDiscretization strategies:");
+    for (op_id, strategy) in &manifest.discretization_strategies {
+        println!("  Op {}: {:?}", op_id, strategy);
+    }
+
+    // Continue with other passes...
+    Ok(())
+}
+```
+
+---
+
+### Example 19: Performance Profiling
+
+```rust
+use hologram_onnx::MountedModel;
+use std::time::Instant;
+
+fn profile_inference(model_path: &Path) -> Result<()> {
+    let model = MountedModel::load(model_path)?;
+
+    let input = vec![1.0; 100];
+    let iterations = 100_000;
+
+    // Warmup
+    for _ in 0..1000 {
+        let _ = model.lookup_operation(0, &input)?;
+    }
+
+    // Benchmark
+    let start = Instant::now();
+    for _ in 0..iterations {
+        let _ = model.lookup_operation(0, &input)?;
+    }
+    let elapsed = start.elapsed();
+
+    let avg_latency_ns = elapsed.as_nanos() / iterations as u128;
+    let throughput = iterations as f64 / elapsed.as_secs_f64();
+
+    println!("Performance Results:");
+    println!("  Iterations: {}", iterations);
+    println!("  Total time: {:?}", elapsed);
+    println!("  Avg latency: {} ns", avg_latency_ns);
+    println!("  Throughput: {:.2} ops/sec", throughput);
+
+    Ok(())
+}
+```
+
+---
+
+## Performance Tuning
+
+### Example 20: Optimization Strategies
+
+```rust
+use hologram_onnx_compiler::*;
+
+async fn optimized_compilation(onnx_bytes: &[u8]) -> Result<()> {
+    let mut collector = Pass1Collector::new();
+    let mut manifest = collector.collect_and_analyze(onnx_bytes, None)?;
+
+    // Strategy 1: Reduce pattern count for less critical operations
+    for (op_id, strategy) in manifest.discretization_strategies.iter_mut() {
+        // Reduce quantization for intermediate operations
+        if let DiscretizationStrategy::Quantized { bits, .. } = strategy {
+            if *bits > 4 {
+                *bits = 4; // 4-bit quantization saves memory
+            }
+        }
+    }
+
+    // Strategy 2: Use parallel processing
+    let atlas = Arc::new(Atlas::with_cache()?);
+    let mut cache_builder = Pass2EmbeddingCache::new(atlas.clone())
+        .with_parallel(true);  // 10-100x speedup
+
+    let cache = cache_builder.build_cache(&manifest)?;
+
+    // Strategy 3: Batch pre-computation
+    let mut precomputer = Pass3PreComputer::new(atlas)
+        .with_parallel(true)
+        .with_batch_size(1000);  // Process 1000 patterns at once
+
+    let factorized = precomputer.precompute_all_results(&manifest, &cache).await?;
+
+    // Strategy 4: Compress binary output
+    let mut generator = Pass4BinaryGenerator::new()
+        .with_compression(true);  // Gzip compression
+
+    generator.generate_binary(&factorized, &manifest, "model.mshr")?;
+
+    Ok(())
+}
+```
+
+---
+
+## Summary
+
+These examples demonstrate:
+
+1. **Basic Compilation**: Simple ONNX → .mshr pipeline
+2. **Custom Discretization**: Fine-tune accuracy vs. memory trade-offs
+3. **Runtime Usage**: Load and execute compiled models
+4. **Multi-Threading**: Parallel inference for high throughput
+5. **Error Handling**: Robust error handling and recovery
+6. **Advanced Features**: Progress tracking, memory optimization
+7. **WASM Deployment**: Browser and Node.js integration
+8. **CLI Tools**: Command-line workflow
+9. **Debugging**: Verbose logging and profiling
+10. **Performance Tuning**: Optimization strategies
+
+For more details, see:
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System design
+- [RUNTIME.md](RUNTIME.md) - Runtime API reference
+- [BINARY_FORMAT.md](BINARY_FORMAT.md) - File format specification

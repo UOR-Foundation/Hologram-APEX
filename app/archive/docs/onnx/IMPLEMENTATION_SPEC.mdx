@@ -1,0 +1,2599 @@
+---
+title: "ONNX Operator Implementation Specification"
+description: "ONNX Operator Implementation Specification documentation"
+---
+
+# ONNX Operator Implementation Specification
+
+This document provides the complete specification for implementing and testing ONNX operators in hologramapp. It covers the architecture, testing strategy, implementation workflow, and operator priority roadmap.
+
+## Table of Contents
+
+1. [ONNX Operator Architecture](#1-onnx-operator-architecture)
+2. [Two-Level Testing Strategy](#2-two-level-testing-strategy)
+3. [Single-Node Testing Methodology](#3-single-node-testing-methodology)
+4. [Two-Node Composition Testing Methodology](#4-two-node-composition-testing-methodology)
+5. [Adding New ONNX Operators - Complete Workflow](#5-adding-new-onnx-operators---complete-workflow)
+6. [Operator Priority Roadmap](#6-operator-priority-roadmap)
+7. [Current Implementation Status](#7-current-implementation-status)
+8. [Complete Implementation Example](#8-complete-implementation-example)
+
+---
+
+## 1. ONNX Operator Architecture
+
+### Three-Tier Implementation System
+
+Hologramapp implements ONNX operators through a three-tier architecture:
+
+```
+Layer 1: Full ONNX Specification
+         ↓ (282 operators in ai.onnx domain)
+
+Layer 2: Atlas Schemas
+         ↓ (37 operators - 13% coverage)
+         ↓ Located in /workspace/schemas/onnx/
+         ↓ Compiled to JSON via Atlas compiler
+
+Layer 3: HRM Pre-Computation Execution
+         ↓ (23 operators - 8% coverage)
+         ↓ Located in hologram-onnx-compiler/src/hrm/ops/
+         ↓ Implements OnnxHRMNode<T> trait
+
+Full Pipeline: Schema + HRM Execution
+         → (18 operators - 6% coverage)
+         → Complete end-to-end functionality
+```
+
+### Current Coverage Statistics
+
+| Layer                                | Operator Count   | Coverage         | Status                  |
+| ------------------------------------ | ---------------- | ---------------- | ----------------------- |
+| ONNX Specification (ai.onnx v1.21.0) | 282 operators    | 100% (reference) | Standard                |
+| Atlas Schemas                        | 37 operators     | 13%              | Implemented             |
+| HRM Execution                        | 23 operators     | 8%               | Implemented             |
+| **Full Pipeline (Schema + HRM)**     | **23 operators** | **8%**           | **✅ Fully Functional** |
+
+### Operator Categories
+
+**Full Pipeline Coverage (23 operators):**
+
+- **Math (4):** Add, Sub, Mul, Div
+- **Matrix (2):** MatMul, Gemm
+- **Activation (3):** Relu, Sigmoid, Tanh
+- **Tensor (6):** Reshape, Concat, Slice, Gather, Unsqueeze, Flatten
+- **Utility (4):** Constant, Range, Shape, ArgMax
+- **Normalization (4):** LayerNormalization, SkipLayerNormalization, BiasGelu, Attention
+
+**Schema Only - No HRM (14 operators):**
+
+These operators have Atlas schemas but need HRM execution implementation:
+
+- **Activation:** Gelu, LeakyRelu, Softmax
+- **Normalization:** BatchNormalization, InstanceNormalization
+- **Reduction:** ReduceMean, ReduceSum
+- **Pooling:** AveragePool, GlobalAveragePool
+- **Shape:** Transpose, Squeeze
+- **Conv:** Conv
+- **Utility:** Cast, ScalarMul
+
+---
+
+## 2. Two-Level Testing Strategy
+
+To ensure operator correctness and interoperability, hologramapp employs a two-level testing strategy:
+
+### Level 1: Single-Node Isolation Tests
+
+**Purpose:** Verify each operator works correctly in isolation.
+
+**Method:** Create minimal ONNX graph containing only one operator node.
+
+**What it catches:**
+
+- Operator logic bugs
+- Numerical correctness issues
+- Edge case handling (zeros, negatives, special values)
+- Shape handling for various tensor dimensions
+
+**Test pattern:**
+
+```
+Input tensors (deterministic)
+       ↓
+   [Operator Node]
+       ↓
+Output tensor (known expected values)
+```
+
+**Example:** Testing the Add operator with inputs [1,2,3] and [4,5,6] expecting output [5,7,9].
+
+### Level 2: Two-Node Composition Tests
+
+**Purpose:** Verify operators can compose - that op1's output can feed into op2's input.
+
+**Method:** Create ONNX graph with two connected operators.
+
+**What it catches:**
+
+- Shape mismatches between operators
+- Type incompatibilities
+- Tensor layout assumptions that break composition
+- Memory/buffer passing bugs
+- Data flow issues
+
+**Test pattern:**
+
+```
+Input tensor
+     ↓
+[Operator 1]
+     ↓
+Intermediate tensor
+     ↓
+[Operator 2]
+     ↓
+Output tensor
+```
+
+**Coverage:** For N operators, test all N×N = 324 combinations (for 18 operators).
+
+**Example:** Testing Add → Relu composition to verify element-wise addition can feed directly into ReLU activation.
+
+### Why Both Levels Are Necessary
+
+| Testing Level | Purpose              | Catches                                       |
+| ------------- | -------------------- | --------------------------------------------- |
+| Single-Node   | Operator isolation   | Logic bugs, numerical errors, edge cases      |
+| Two-Node      | Operator composition | Shape mismatches, type issues, data flow bugs |
+
+**Real-world scenario:** An operator might work perfectly in isolation (single-node test passes), but fail when its output is consumed by another operator due to shape or layout assumptions (two-node test catches this).
+
+---
+
+## 3. Single-Node Testing Methodology
+
+### Overview
+
+Single-node tests create minimal ONNX graphs containing exactly one operator, with deterministic inputs that produce known outputs.
+
+### Test Infrastructure
+
+Located in: `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/mod.rs`
+
+#### OnnxGraphBuilder
+
+Utility for programmatic single-node ONNX graph creation:
+
+```rust
+pub struct OnnxGraphBuilder {
+    nodes: Vec<NodeProto>,
+    inputs: Vec<ValueInfoProto>,
+    outputs: Vec<ValueInfoProto>,
+    attributes: HashMap<String, AttributeProto>,
+}
+
+impl OnnxGraphBuilder {
+    /// Create new graph builder
+    pub fn new() -> Self;
+
+    /// Add input tensor specification
+    pub fn add_input(self, name: &str, shape: &[i64], dtype: DataType) -> Self;
+
+    /// Add output tensor specification
+    pub fn add_output(self, name: &str, shape: &[i64], dtype: DataType) -> Self;
+
+    /// Add operator node
+    pub fn add_node(
+        self,
+        op_type: &str,
+        inputs: &[&str],
+        outputs: &[&str]
+    ) -> Self;
+
+    /// Add node attribute (for operators requiring attributes)
+    pub fn add_attribute(
+        self,
+        name: &str,
+        value: AttributeValue
+    ) -> Self;
+
+    /// Build final ModelProto
+    pub fn build(self) -> ModelProto;
+
+    /// Serialize to ONNX binary format
+    pub fn to_bytes(self) -> Result<Vec<u8>>;
+}
+```
+
+#### TestDataGenerator
+
+Utilities for creating deterministic test data:
+
+```rust
+/// Generate tensor filled with zeros
+pub fn zeros(shape: &[usize]) -> Vec<f32>;
+
+/// Generate tensor filled with ones
+pub fn ones(shape: &[usize]) -> Vec<f32>;
+
+/// Generate tensor with sequential values (0, 1, 2, ...)
+pub fn range(start: f32, end: f32, step: f32) -> Vec<f32>;
+
+/// Generate identity matrix
+pub fn identity_matrix(n: usize) -> Vec<f32>;
+
+/// Create tensor from custom values
+pub fn custom(data: Vec<f32>) -> Vec<f32>;
+```
+
+#### ReferenceValidator
+
+Utilities for comparing outputs with expected values:
+
+```rust
+/// Assert tensors are equal within tolerance
+pub fn assert_tensors_equal(
+    actual: &[f32],
+    expected: &[f32],
+    tolerance: f32
+);
+
+/// Assert tensor shapes are equal
+pub fn assert_shape_equal(
+    actual: &[i64],
+    expected: &[i64]
+);
+```
+
+### Test Pattern Template
+
+Every operator follows this test pattern (4+ test functions per operator):
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_{operator}_basic() {
+        // Create single-node ONNX graph
+        let graph = OnnxGraphBuilder::new()
+            .add_input("input_a", &[3], DataType::Float32)
+            .add_input("input_b", &[3], DataType::Float32)
+            .add_node("{Operator}", &["input_a", "input_b"], &["output"])
+            .add_output("output", &[3], DataType::Float32)
+            .build();
+
+        // Deterministic inputs
+        let input_a = vec![1.0, 2.0, 3.0];
+        let input_b = vec![4.0, 5.0, 6.0];
+        let expected_output = vec![5.0, 7.0, 9.0];
+
+        // Execute graph
+        let result = execute_single_node_graph(&graph, &[input_a, input_b]);
+
+        // Validate output
+        assert_tensors_equal(&result, &expected_output, 1e-6);
+    }
+
+    #[test]
+    fn test_{operator}_edge_cases() {
+        // Test zeros, negatives, special values
+        let test_cases = vec![
+            (vec![0.0, 0.0], vec![1.0, 2.0], vec![1.0, 2.0]),  // Zero + values
+            (vec![-1.0, -2.0], vec![1.0, 2.0], vec![0.0, 0.0]), // Negative + positive
+            // More edge cases...
+        ];
+
+        for (input_a, input_b, expected) in test_cases {
+            let graph = create_test_graph();
+            let result = execute_single_node_graph(&graph, &[input_a, input_b]);
+            assert_tensors_equal(&result, &expected, 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_{operator}_various_shapes() {
+        // Test 1D tensors
+        test_with_shape(&[5]);
+
+        // Test 2D tensors
+        test_with_shape(&[2, 3]);
+
+        // Test 3D tensors
+        test_with_shape(&[2, 3, 4]);
+
+        // Test broadcasting patterns (if applicable)
+        test_broadcast(&[2, 3], &[3]);
+    }
+
+    #[test]
+    fn test_{operator}_onnx_roundtrip() {
+        // Create graph
+        let graph = create_test_graph();
+
+        // Serialize to bytes
+        let bytes = graph_to_bytes(&graph);
+
+        // Deserialize from bytes
+        let deserialized = graph_from_bytes(&bytes);
+
+        // Execute deserialized graph
+        let result = execute_single_node_graph(&deserialized, &inputs);
+
+        // Verify same output
+        assert_tensors_equal(&result, &expected, 1e-6);
+    }
+}
+```
+
+### Test Organization
+
+Tests are organized by operator category:
+
+```
+tests/onnx_single_node/
+├── mod.rs                      # Test infrastructure
+├── test_math.rs                # Add, Sub, Mul, Div (4 ops)
+├── test_matrix.rs              # MatMul, Gemm (2 ops)
+├── test_activation.rs          # Relu, Sigmoid, Tanh (3 ops)
+├── test_tensor_manipulation.rs # Reshape, Concat, Slice, etc. (6 ops)
+├── test_utility.rs             # Constant, Range, ArgMax (3 ops)
+├── test_normalization.rs       # LayerNorm, etc. (4 ops)
+└── README.md                   # Documentation
+```
+
+**Total:** 6 test files, 18 operators, 72+ tests (4+ tests per operator).
+
+### Deterministic Test Case Design
+
+**Principles for creating deterministic test cases:**
+
+1. **Use Known Values:** Choose inputs with easily verifiable outputs
+
+   - Example: [1,2,3] + [4,5,6] = [5,7,9] (simple mental math)
+
+2. **Test Identity Operations:** Verify operator behaves correctly with identity elements
+
+   - Example: [5,10] \* [1,1] = [5,10] (multiplication by 1)
+   - Example: [3,7] + [0,0] = [3,7] (addition by 0)
+
+3. **Test Boundaries:** Include edge cases
+
+   - Zeros: [0,0,0]
+   - Negatives: [-1,-2,-3]
+   - Large values: [1e6, 1e7]
+   - Special floats: [NaN, Inf, -Inf] (where applicable)
+
+4. **Use Lookup Tables for Transcendental Functions:**
+
+   - For Sigmoid, Tanh, etc., use pre-computed reference values
+   - Example: sigmoid(0) = 0.5, sigmoid(∞) ≈ 1.0, sigmoid(-∞) ≈ 0.0
+
+5. **Test Shape Variations:**
+   - 1D: [5]
+   - 2D: [2, 3]
+   - 3D: [2, 3, 4]
+   - Broadcasting: [2, 3] with [3]
+
+---
+
+## 4. Two-Node Composition Testing Methodology
+
+### Overview
+
+Two-node composition tests verify that operators can be chained together: op1's output feeds into op2's input. This catches shape mismatches, type incompatibilities, and data flow bugs that only appear during operator composition.
+
+### Test Infrastructure
+
+Located in: `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_two_node/mod.rs`
+
+#### TwoNodeGraphBuilder
+
+Utility for creating two-node ONNX graphs:
+
+```rust
+pub struct TwoNodeGraphBuilder;
+
+impl TwoNodeGraphBuilder {
+    /// Create graph: input → op1 → intermediate → op2 → output
+    pub fn create(
+        op1_type: &str,
+        op1_attrs: HashMap<String, AttributeValue>,
+        op2_type: &str,
+        op2_attrs: HashMap<String, AttributeValue>,
+        input_shape: &[i64],
+        intermediate_shape: &[i64],
+        output_shape: &[i64],
+    ) -> Result<ModelProto>;
+}
+```
+
+#### OperatorMetadata Registry
+
+Metadata about each operator's shape requirements:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct OperatorMetadata {
+    pub op_type: &'static str,
+    pub default_input_shape: Vec<i64>,
+    pub default_output_shape: Vec<i64>,
+    pub produces_scalar: bool,
+    pub requires_attributes: bool,
+    pub min_inputs: usize,
+    pub max_inputs: usize,
+}
+
+/// Registry of all operators
+pub const OPERATOR_REGISTRY: &[OperatorMetadata] = &[
+    OperatorMetadata {
+        op_type: "Add",
+        default_input_shape: vec![3],
+        default_output_shape: vec![3],
+        produces_scalar: false,
+        requires_attributes: false,
+        min_inputs: 2,
+        max_inputs: 2,
+    },
+    OperatorMetadata {
+        op_type: "MatMul",
+        default_input_shape: vec![2, 2],
+        default_output_shape: vec![2, 2],
+        produces_scalar: false,
+        requires_attributes: false,
+        min_inputs: 2,
+        max_inputs: 2,
+    },
+    // ... metadata for all 18 operators
+];
+
+/// Lookup operator metadata by type
+pub fn get_operator_metadata(op_type: &str) -> Result<&'static OperatorMetadata>;
+```
+
+#### Shape Compatibility Computation
+
+```rust
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShapeCompatibility {
+    /// Operators have compatible shapes automatically
+    Compatible,
+
+    /// Need to reshape between op1 and op2
+    RequiresReshape,
+
+    /// Shapes are fundamentally incompatible
+    Incompatible,
+}
+
+/// Determine if op1's output shape matches op2's input requirements
+pub fn compute_shape_compatibility(
+    op1_meta: &OperatorMetadata,
+    op2_meta: &OperatorMetadata,
+) -> ShapeCompatibility;
+
+/// Compute compatible shapes for op1 → op2 composition
+pub fn compute_compatible_shapes(
+    op1_meta: &OperatorMetadata,
+    op2_meta: &OperatorMetadata,
+) -> Result<(Vec<i64>, Vec<i64>, Vec<i64>)>;
+// Returns: (input_shape, intermediate_shape, output_shape)
+```
+
+### Automated Test Generation
+
+Two-node composition tests are automatically generated for all N×N operator pairs:
+
+```rust
+#[cfg(test)]
+mod composition_tests {
+    use super::*;
+
+    // Macro to generate all N×N composition tests
+    macro_rules! generate_composition_tests {
+        ($($op1:ident),* ; $($op2:ident),*) => {
+            $($(
+                paste::paste! {
+                    #[test]
+                    fn [<test_composition_ $op1:lower _to_ $op2:lower>]() {
+                        test_operator_composition(
+                            stringify!($op1),
+                            stringify!($op2),
+                        ).expect("Composition test failed");
+                    }
+                }
+            )*)*
+        };
+    }
+
+    // Generate all 18×18 = 324 composition tests
+    generate_composition_tests!(
+        Add, Sub, Mul, Div, MatMul, Gemm, Relu, Sigmoid, Tanh,
+        Reshape, Concat, Slice, Gather, Unsqueeze, Flatten,
+        Constant, Range, ArgMax
+        ;
+        Add, Sub, Mul, Div, MatMul, Gemm, Relu, Sigmoid, Tanh,
+        Reshape, Concat, Slice, Gather, Unsqueeze, Flatten,
+        Constant, Range, ArgMax
+    );
+}
+```
+
+This automatically creates test functions like:
+
+- `test_composition_add_to_relu()`
+- `test_composition_matmul_to_sigmoid()`
+- `test_composition_reshape_to_add()`
+- ... 321 more tests
+
+### Composition Test Logic
+
+```rust
+fn test_operator_composition(op1: &str, op2: &str) -> Result<()> {
+    // Get operator metadata
+    let meta1 = get_operator_metadata(op1)?;
+    let meta2 = get_operator_metadata(op2)?;
+
+    // Check shape compatibility
+    let compatibility = compute_shape_compatibility(&meta1, &meta2);
+
+    // For incompatible operators, verify appropriate error is raised
+    if compatibility == ShapeCompatibility::Incompatible {
+        return verify_composition_error(op1, op2);
+    }
+
+    // Compute compatible shapes
+    let (input_shape, intermediate_shape, output_shape) =
+        compute_compatible_shapes(&meta1, &meta2)?;
+
+    // Generate test data
+    let input_data = generate_test_data(&input_shape);
+
+    // Create two-node graph: input → op1 → intermediate → op2 → output
+    let graph = TwoNodeGraphBuilder::create(
+        op1, HashMap::new(),
+        op2, HashMap::new(),
+        &input_shape,
+        &intermediate_shape,
+        &output_shape,
+    )?;
+
+    // Execute graph
+    let result = execute_graph(&graph, &[input_data])?;
+
+    // Verify: no errors, output has correct shape, no NaN values
+    assert_eq!(result.shape, output_shape);
+    assert!(result.data.iter().all(|x| !x.is_nan()),
+            "Composition {}→{} produced NaN values", op1, op2);
+    assert!(result.data.iter().all(|x| x.is_finite()),
+            "Composition {}→{} produced infinite values", op1, op2);
+
+    Ok(())
+}
+```
+
+### Test Categories
+
+**Compatible Compositions (majority of 324):**
+
+Operators that naturally compose without adaptation:
+
+- Math → Math: `Add → Mul`, `Sub → Div`
+- Math → Activation: `Mul → Relu`, `Add → Sigmoid`
+- Tensor → Math: `Reshape → Add`, `Concat → Mul`
+- Matrix → Activation: `MatMul → Tanh`, `Gemm → Relu`
+- Activation → Activation: `Relu → Sigmoid`
+
+**Requires Adaptation (some pairs):**
+
+Operators that need shape adjustment to compose:
+
+- Scalar producer → Tensor consumer: `ArgMax → Add` (need to unsqueeze)
+- Shape mismatch: `Flatten → MatMul` (need specific input shapes)
+
+**Incompatible (edge cases):**
+
+Operators that fundamentally can't compose:
+
+- Document which pairs are incompatible
+- Test that appropriate errors are raised
+- Example: `Shape → Add` (shape operator produces int64, Add expects float32)
+
+### Coverage Metrics
+
+For N=18 operators:
+
+- **Total compositions:** 18 × 18 = 324 tests
+- **Expected compatible:** ~280 tests (87%)
+- **Requires adaptation:** ~30 tests (9%)
+- **Incompatible:** ~14 tests (4%)
+
+When adding operator #19:
+
+- **New compositions:** 2×19 = 38 tests (19→all + all→19)
+- **Total compositions:** 19 × 19 = 361 tests
+
+---
+
+## 5. Adding New ONNX Operators - Complete Workflow
+
+This section provides a step-by-step guide for implementing a new ONNX operator from the ONNX specification through to full hologramapp integration with comprehensive testing.
+
+### Prerequisites
+
+Before starting:
+
+1. **Select operator from ONNX spec:** https://onnx.ai/onnx/operators/
+2. **Check current coverage:** Ensure operator isn't already implemented
+3. **Verify priority:** Refer to [Operator Priority Roadmap](#6-operator-priority-roadmap)
+
+### Step 1: Create Atlas Schema
+
+**Location:** `/workspace/schemas/onnx/{category}/{operator_name}.py`
+
+**Categories:**
+
+- `core/` - Basic math operations
+- `activation/` - Activation functions
+- `normalization/` - Normalization layers
+- `reduction/` - Reduction operations
+- `pooling/` - Pooling operations
+- `shape/` - Shape manipulation
+- `conv/` - Convolution operations
+- `other/` - Utility operations
+
+**Schema Template:**
+
+```python
+"""
+ONNX {Operator} Operation
+
+ONNX Spec: https://onnx.ai/onnx/operators/onnx__{Operator}.html
+
+Brief description of the operation.
+
+Shapes:
+  - Input: [N] - input tensor
+  - Output: [N] - output tensor
+"""
+
+from atlas_kernel import DeviceArray, f32, u32, get_global_id
+
+def {operator_name}(
+    Input: DeviceArray[f32],
+    Output: DeviceArray[f32],
+    n: u32
+):
+    """
+    ONNX {Operator}: Output = func(Input)
+
+    Parameters:
+    - Input: Input tensor
+    - Output: Output tensor
+    - n: Total number of elements
+    """
+    idx = get_global_id()
+
+    if idx < n:
+        Output[idx] = transform(Input[idx])
+```
+
+**Important Constraints:**
+
+- Atlas compiler supports: variables, constants, binary ops, comparisons, subscripts, calls, for loops
+- Does NOT support: Python lists, dicts, complex data structures
+- Keep operations simple and parallel (element-wise or simple matrix ops)
+- Multi-pass operations (like softmax) must be split into separate kernels
+
+**Compilation:**
+
+```bash
+cd /workspace/schemas/stdlib
+python3 atlas_compile.py ../onnx/{category}/{operator_name}.py
+```
+
+This creates: `../onnx/{category}/{operator_name}.json`
+
+**Validation Checklist:**
+
+- [ ] Schema compiles without errors
+- [ ] JSON output is generated
+- [ ] Operator type matches ONNX spec exactly
+- [ ] Input/output shapes are correct
+- [ ] Attributes are properly defined (if any)
+
+### Step 2: Implement HRM Execution
+
+**Location:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/src/hrm/ops/{category}.rs`
+
+**2a. Create Operator Struct**
+
+```rust
+#[derive(Debug, Clone)]
+pub struct {Operator}Op;
+
+impl<T: Numeric> OnnxHRMNode<T> for {Operator}Op {
+    fn op_type(&self) -> &'static str {
+        "{Operator}"
+    }
+
+    fn execute(
+        &self,
+        atlas: &Atlas,
+        inputs: &[&[T]],
+    ) -> Result<Vec<T>> {
+        // Validate inputs
+        self.validate_inputs(inputs)?;
+
+        // Get input dimensions
+        let input = inputs[0];
+        let n = input.len();
+
+        // Allocate output
+        let mut output = vec![T::zero(); n];
+
+        // Execute operation using Atlas
+        // TODO: Call Atlas kernel or implement Griess algebra operations
+
+        Ok(output)
+    }
+
+    fn validate_inputs(&self, inputs: &[&[T]]) -> Result<()> {
+        // Verify correct number of inputs
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidInputCount {
+                op: self.op_type(),
+                expected: 1,
+                actual: inputs.len(),
+            });
+        }
+
+        // Additional validation (shapes, values, etc.)
+
+        Ok(())
+    }
+}
+```
+
+**2b. Add to OnnxOperator Enum**
+
+In `src/hrm/ops/mod.rs`:
+
+```rust
+#[derive(Debug, Clone)]
+pub enum OnnxOperator<T: Numeric> {
+    // Existing variants...
+    {Operator}({Operator}Op),
+}
+
+impl<T: Numeric> OnnxHRMNode<T> for OnnxOperator<T> {
+    fn op_type(&self) -> &'static str {
+        match self {
+            // Existing matches...
+            Self::{Operator}(op) => op.op_type(),
+        }
+    }
+
+    fn execute(&self, atlas: &Atlas, inputs: &[&[T]]) -> Result<Vec<T>> {
+        match self {
+            // Existing matches...
+            Self::{Operator}(op) => op.execute(atlas, inputs),
+        }
+    }
+
+    fn validate_inputs(&self, inputs: &[&[T]]) -> Result<()> {
+        match self {
+            // Existing matches...
+            Self::{Operator}(op) => op.validate_inputs(inputs),
+        }
+    }
+}
+```
+
+**2c. Implement Numeric Trait Support**
+
+Support all numeric types by using the `Numeric` trait:
+
+```rust
+impl<T: Numeric> {Operator}Op {
+    fn execute_generic(&self, input: &[T]) -> Vec<T> {
+        input.iter()
+            .map(|&x| {
+                // Use Numeric trait methods
+                T::from_f32(transform(x.to_f32()))
+            })
+            .collect()
+    }
+}
+```
+
+**Supported numeric types:** f32, f64, f16, bf16, i8, i16, i32, i64, u8, u16, u32, u64
+
+**Validation Checklist:**
+
+- [ ] Operator implements `OnnxHRMNode<T>` trait
+- [ ] Added to `OnnxOperator<T>` enum
+- [ ] Supports `Numeric` trait for type generics
+- [ ] Validation logic is complete
+- [ ] Code compiles without warnings: `cargo build`
+- [ ] Clippy passes: `cargo clippy -- -D warnings`
+
+### Step 3: Write Single-Node Tests
+
+**Location:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/test_{category}.rs`
+
+**3a. Add Test Module**
+
+```rust
+#[cfg(test)]
+mod test_{operator_lower} {
+    use super::*;
+
+    #[test]
+    fn test_{operator_lower}_basic() {
+        // Create single-node graph
+        let graph = OnnxGraphBuilder::new()
+            .add_input("input", &[3], DataType::Float32)
+            .add_node("{Operator}", &["input"], &["output"])
+            .add_output("output", &[3], DataType::Float32)
+            .build();
+
+        // Deterministic inputs and expected output
+        let input = vec![1.0, 2.0, 3.0];
+        let expected = vec![2.0, 4.0, 6.0];  // Example: 2x transformation
+
+        // Execute
+        let result = execute_single_node_graph(&graph, &[input]).unwrap();
+
+        // Validate
+        assert_tensors_equal(&result, &expected, 1e-6);
+    }
+
+    #[test]
+    fn test_{operator_lower}_edge_cases() {
+        let test_cases = vec![
+            (vec![0.0, 0.0, 0.0], vec![0.0, 0.0, 0.0]),  // Zeros
+            (vec![-1.0, -2.0, -3.0], vec![...]),          // Negatives
+            (vec![1e6, 1e7], vec![...]),                  // Large values
+        ];
+
+        for (input, expected) in test_cases {
+            let graph = create_test_graph();
+            let result = execute_single_node_graph(&graph, &[input]).unwrap();
+            assert_tensors_equal(&result, &expected, 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_{operator_lower}_various_shapes() {
+        // Test different tensor dimensions
+        test_with_shape(&[5]);           // 1D
+        test_with_shape(&[2, 3]);        // 2D
+        test_with_shape(&[2, 3, 4]);     // 3D
+    }
+
+    #[test]
+    fn test_{operator_lower}_onnx_roundtrip() {
+        let graph = create_test_graph();
+        let bytes = graph_to_bytes(&graph);
+        let deserialized = graph_from_bytes(&bytes);
+
+        let input = vec![1.0, 2.0, 3.0];
+        let result = execute_single_node_graph(&deserialized, &[input]).unwrap();
+
+        // Verify correct output after serialization roundtrip
+        assert!(!result.iter().any(|x| x.is_nan()));
+    }
+}
+```
+
+**3b. Run Single-Node Tests**
+
+```bash
+cd /workspace/hologram-sdk/rust/hologram-onnx-compiler
+cargo test --test onnx_single_node test_{operator_lower}
+```
+
+**Validation Checklist:**
+
+- [ ] 4+ test functions written (basic, edge cases, shapes, roundtrip)
+- [ ] All tests pass
+- [ ] Tests use deterministic inputs with known outputs
+- [ ] Edge cases covered (zeros, negatives, boundaries)
+- [ ] Various tensor shapes tested
+
+### Step 4: Add to Two-Node Composition Matrix
+
+**Location:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_two_node/mod.rs`
+
+**4a. Add Operator Metadata**
+
+In `mod.rs`, add to `OPERATOR_REGISTRY`:
+
+```rust
+pub const OPERATOR_REGISTRY: &[OperatorMetadata] = &[
+    // Existing operators...
+    OperatorMetadata {
+        op_type: "{Operator}",
+        default_input_shape: vec![3],       // Adjust based on operator
+        default_output_shape: vec![3],      // Adjust based on operator
+        produces_scalar: false,              // true if output is scalar
+        requires_attributes: false,          // true if needs attributes
+        min_inputs: 1,
+        max_inputs: 1,
+    },
+];
+```
+
+**4b. Update Test Generation Macro**
+
+In `tests/onnx_two_node/test_all_compositions.rs`, add operator to macro:
+
+```rust
+generate_composition_tests!(
+    Add, Sub, Mul, Div, MatMul, Gemm, Relu, Sigmoid, Tanh,
+    Reshape, Concat, Slice, Gather, Unsqueeze, Flatten,
+    Constant, Range, ArgMax, {Operator}  // ← Add new operator
+    ;
+    Add, Sub, Mul, Div, MatMul, Gemm, Relu, Sigmoid, Tanh,
+    Reshape, Concat, Slice, Gather, Unsqueeze, Flatten,
+    Constant, Range, ArgMax, {Operator}  // ← Add new operator
+);
+```
+
+This automatically generates 2N new tests where N is the previous operator count:
+
+- N tests: existing operators → new operator
+- N tests: new operator → existing operators
+
+**4c. Run Composition Tests**
+
+```bash
+cargo test --test onnx_two_node
+```
+
+**Validation Checklist:**
+
+- [ ] Operator metadata added to registry
+- [ ] Test generation macro updated
+- [ ] 2N new composition tests generated (N = previous operator count)
+- [ ] All composition tests pass
+- [ ] Shape compatibility is correct
+
+### Step 5: Comprehensive Validation
+
+**5a. Run All Tests**
+
+```bash
+# Run all ONNX tests (single-node + two-node)
+cargo test onnx_
+
+# Run full workspace test suite
+cargo test --workspace
+```
+
+**5b. Check for Warnings**
+
+```bash
+# Zero warnings required
+cargo clippy --workspace -- -D warnings
+```
+
+**5c. Verify Documentation**
+
+```bash
+# Build documentation (skip if it crashes IDE)
+# cargo doc --no-deps --workspace
+
+# Verify operator is documented
+# Check doc comments are complete
+```
+
+**Final Validation Checklist:**
+
+- [ ] Atlas schema compiles to JSON
+- [ ] HRM operator implements `OnnxHRMNode<T>`
+- [ ] Added to `OnnxOperator<T>` enum
+- [ ] 4+ single-node tests written and passing
+- [ ] Operator metadata added to registry
+- [ ] 2N composition tests generated and passing
+- [ ] `cargo test --workspace` passes
+- [ ] `cargo clippy --workspace -- -D warnings` passes with zero warnings
+- [ ] Documentation updated (if applicable)
+- [ ] Operator added to [Current Implementation Status](#7-current-implementation-status) section
+
+### Summary
+
+Adding a new operator involves:
+
+1. **Atlas schema** (10-30 lines of Python)
+2. **HRM execution** (50-100 lines of Rust)
+3. **Single-node tests** (40-80 lines of Rust)
+4. **Composition metadata** (10 lines of Rust)
+5. **Validation** (run tests, ensure zero warnings)
+
+**Expected time:** 2-4 hours per operator for experienced developers.
+
+---
+
+## 6. Operator Priority Roadmap
+
+This section outlines which ONNX operators should be implemented next, prioritized by neural network usage frequency and hologramapp architectural goals.
+
+### Current Coverage: 23/282 Operators (8%)
+
+**Goal:** Expand to 37 operators (schema-backed) → 100+ operators (common neural network coverage)
+
+**Current Status:** 23 operators fully tested with 110 passing tests (102 operator tests + 8 infrastructure tests)
+
+### Tier 1: High Priority (Next 10 Operators)
+
+These operators are critical for common neural network models and should be implemented immediately.
+
+| Operator               | Category      | Rationale                                                | Complexity |
+| ---------------------- | ------------- | -------------------------------------------------------- | ---------- |
+| **Softmax**            | Activation    | Required for attention mechanisms, classification layers | Medium     |
+| **BatchNormalization** | Normalization | Common in CNNs, ResNet, etc.                             | Medium     |
+| **Conv**               | Convolution   | Foundational for all vision models                       | High       |
+| **MaxPool**            | Pooling       | Common in CNNs                                           | Medium     |
+| **Transpose**          | Shape         | Common shape manipulation, needed for many ops           | Low        |
+| **Squeeze**            | Shape         | Remove dimensions of size 1                              | Low        |
+| **ReduceSum**          | Reduction     | Aggregation operation, used in many contexts             | Low        |
+| **ReduceMean**         | Reduction     | Averaging operation, common in loss functions            | Low        |
+| **Equal**              | Comparison    | Equality comparison for masking                          | Low        |
+| **Where**              | Conditional   | Conditional selection based on mask                      | Medium     |
+
+**Implementation order:** Transpose, Squeeze, ReduceSum, ReduceMean → Softmax → BatchNormalization → Equal, Where → MaxPool → Conv
+
+**Rationale:**
+
+- Shape ops first (low complexity, high utility)
+- Reductions next (needed for normalization)
+- Softmax (enables attention layers)
+- BatchNorm (enables CNNs)
+- Comparison/conditional (enables masking)
+- Pooling and Conv last (higher complexity, build on previous ops)
+
+### Tier 2: Medium Priority (Next 15 Operators)
+
+These operators expand coverage for a wider range of models.
+
+**Activations (3):**
+
+- LeakyRelu - Variant of ReLU with negative slope
+- Gelu - Gaussian Error Linear Unit (transformers)
+- PRelu - Parametric ReLU
+
+**Math (5):**
+
+- Abs - Absolute value
+- Neg - Negation
+- Sqrt - Square root
+- Pow - Power/exponentiation
+- Clip - Clamp values to range
+
+**Comparison (3):**
+
+- Greater - Greater than comparison
+- Less - Less than comparison
+- And, Or - Logical operations
+
+**Reduction (2):**
+
+- ReduceMax - Maximum reduction
+- ReduceMin - Minimum reduction
+
+**Shape (2):**
+
+- Split - Split tensor along axis
+- Pad - Padding operation
+
+**Implementation order:** Abs, Neg, Sqrt → LeakyRelu, Gelu → Greater, Less, And, Or → ReduceMax, ReduceMin → Clip, Pow → Split, Pad → PRelu
+
+### Tier 3: Advanced (Next 20 Operators)
+
+These operators enable specialized models and advanced use cases.
+
+**Recurrent Networks (4):**
+
+- LSTM - Long Short-Term Memory
+- GRU - Gated Recurrent Unit
+- RNN - Basic recurrent neural network
+- Bidirectional wrapper
+
+**Vision Operations (5):**
+
+- ConvTranspose - Transposed convolution (upsampling)
+- GlobalMaxPool - Global max pooling
+- Resize - Image resizing/interpolation
+- Upsample - Upsampling operation
+- NonMaxSuppression - Object detection post-processing
+
+**Advanced Math (5):**
+
+- Einsum - Einstein summation notation
+- MatMulInteger - Integer matrix multiplication
+- CumSum - Cumulative sum
+- TopK - Top-K elements
+- Tile - Tile/repeat tensor
+
+**Quantization (6):**
+
+- QuantizeLinear - Quantize float to int
+- DequantizeLinear - Dequantize int to float
+- QLinearConv - Quantized convolution
+- QLinearMatMul - Quantized matrix multiplication
+- DynamicQuantizeLinear - Dynamic quantization
+- MatMulIntegerToFloat - Integer matmul with float output
+
+**Implementation order:** Prioritize based on specific model requirements (LSTM/GRU for sequence models, ConvTranspose for GANs, quantization for deployment)
+
+### Remaining Operators Summary
+
+**Total ONNX Operators:** 282
+**Currently Implemented:** 23 (8%)
+**Remaining to Implement:** 259 (92%)
+
+The 259 remaining operators are distributed across the following categories:
+
+#### By Priority Tier
+
+- **Tier 1 (Schema-backed, High Priority):** 14 operators - Already have Atlas schemas, need HRM execution
+- **Tier 2 (Medium Priority):** ~30 operators - Common in neural networks, medium complexity
+- **Tier 3 (Advanced):** ~215 operators - Specialized use cases, complex implementations
+
+#### By Functional Category
+
+The remaining 259 operators can be grouped into these functional categories:
+
+**Core Operations (~40 operators):**
+- Math: Abs, Neg, Sqrt, Pow, Exp, Log, Ceil, Floor, Round, Min, Max, Mean, Sum, Prod, etc.
+- Comparison: Greater, GreaterOrEqual, Less, LessOrEqual, Equal, Not, And, Or, Xor, etc.
+- Shape: Split, Pad, Tile, Expand, ConstantOfShape, etc.
+
+**Neural Network Layers (~30 operators):**
+- Convolution: ConvTranspose, MaxPool, MaxUnpool, LpPool, etc.
+- Normalization: LRN (Local Response Normalization), MeanVarianceNormalization, etc.
+- Activations: PRelu, Elu, Selu, HardSigmoid, HardSwish, Swish, Mish, Celu, Softplus, Softsign, ThresholdedRelu, etc.
+- Reduction: ReduceMax, ReduceMin, ReduceProd, ReduceL1, ReduceL2, ReduceLogSum, ReduceLogSumExp, ReduceSumSquare, etc.
+
+**Recurrent Networks (~5 operators):**
+- LSTM, GRU, RNN, Loop, Scan
+
+**Vision/Image Processing (~10 operators):**
+- Resize, Upsample, NonMaxSuppression, RoiAlign, DepthToSpace, SpaceToDepth, etc.
+
+**Advanced Math (~20 operators):**
+- Einsum, MatMulInteger, CumSum, TopK, Compress, Unique, NonZero, Det, Erf, etc.
+
+**Quantization (~25 operators):**
+- QuantizeLinear, DequantizeLinear, QLinearConv, QLinearMatMul, QLinearAdd, DynamicQuantizeLinear, ConvInteger, MatMulInteger, QLinearConcat, QLinearGlobalAveragePool, QLinearLeakyRelu, QLinearSigmoid, etc.
+
+**Sequence Operations (~15 operators):**
+- SequenceAt, SequenceConstruct, SequenceEmpty, SequenceErase, SequenceInsert, SequenceLength, ConcatFromSequence, SplitToSequence, etc.
+
+**Control Flow (~5 operators):**
+- If, Loop, Scan, etc.
+
+**Optional Type Support (~5 operators):**
+- Optional, OptionalGetElement, OptionalHasElement, etc.
+
+**String Operations (~10 operators):**
+- StringNormalizer, StringConcat, StringSplit, RegexFullMatch, TfIdfVectorizer, etc.
+
+**Sparse Tensor Support (~5 operators):**
+- SparseToDense, DenseToSparse, etc.
+
+**Specialized/Utility (~90+ operators):**
+- Various domain-specific operators, data type utilities, random number generation, windowing functions, etc.
+
+**Next Implementation Priority:**
+
+1. **Phase 1 (14 ops):** Complete all schema-backed operators - highest ROI, schemas already exist
+2. **Phase 2 (30 ops):** Tier 2 operators - expand common neural network coverage
+3. **Phase 3 (50 ops):** Advanced operations - enable specialized models
+4. **Phase 4 (165 ops):** Specialized operators - comprehensive ONNX coverage
+
+### Implementation Milestones
+
+| Milestone   | Operator Count | Coverage | Key Capabilities                                                         |
+| ----------- | -------------- | -------- | ------------------------------------------------------------------------ |
+| **Current** | 23             | 8%       | Math, activations, tensor manipulation, normalization (110 tests)        |
+| **Phase 1** | 37             | 13%      | + All schema-backed operators (Softmax, BatchNorm, Conv, etc.)           |
+| **Phase 2** | 52             | 18%      | + Tier 2 operators (advanced activations, comparisons, more shape ops)   |
+| **Phase 3** | 72             | 26%      | + Advanced math, pooling variants, pad/split/tile                        |
+| **Phase 4** | 100            | 35%      | + RNN/LSTM/GRU, vision ops (ConvTranspose, Resize)                       |
+| **Phase 5** | 150+           | 53%+     | + Quantization, sequence ops, specialized operators                      |
+| **Long-term** | 282            | 100%     | Full ONNX specification coverage                                         |
+
+### Priority Matrix
+
+When selecting which operator to implement next, consider:
+
+1. **Neural Network Usage Frequency** (0-10 score)
+
+   - How often is this operator used in common models?
+   - ResNet, BERT, GPT, Vision Transformers, etc.
+
+2. **Dependency Chain** (0-10 score)
+
+   - How many other operators depend on this?
+   - Example: Softmax needed for Attention
+
+3. **Implementation Complexity** (inverse: 10 = easy, 0 = hard)
+
+   - How difficult to implement in Atlas + HRM?
+   - Simple element-wise ops = high score
+   - Complex multi-pass ops = low score
+
+4. **Unlocks Model Categories** (0-10 score)
+   - Does this enable running entire classes of models?
+   - Example: Conv unlocks all CNNs
+
+**Priority Score** = (Usage × 2) + Dependency + Complexity + (Unlocks × 1.5)
+
+**Example scores:**
+
+| Operator           | Usage | Dependency | Complexity | Unlocks | **Score** |
+| ------------------ | ----- | ---------- | ---------- | ------- | --------- |
+| Softmax            | 9     | 8          | 6          | 9       | **53**    |
+| BatchNormalization | 8     | 7          | 5          | 8       | **51**    |
+| Conv               | 10    | 9          | 3          | 10      | **52**    |
+| Transpose          | 7     | 9          | 9          | 6       | **48**    |
+| Squeeze            | 6     | 7          | 10         | 5       | **40**    |
+
+Use this matrix to prioritize operator implementation based on hologramapp goals.
+
+---
+
+## 7. Current Implementation Status
+
+### Full Pipeline Coverage (18 Operators)
+
+These operators have both Atlas schemas and HRM execution - fully functional end-to-end.
+
+#### Math Operators (4)
+
+| Operator | Test File    | Single-Node Tests | Composition Tests     | Status       |
+| -------- | ------------ | ----------------- | --------------------- | ------------ |
+| Add      | test_math.rs | ✅ 4+ tests       | ✅ 18 → Add, Add → 18 | Fully tested |
+| Sub      | test_math.rs | ✅ 4+ tests       | ✅ 18 → Sub, Sub → 18 | Fully tested |
+| Mul      | test_math.rs | ✅ 4+ tests       | ✅ 18 → Mul, Mul → 18 | Fully tested |
+| Div      | test_math.rs | ✅ 4+ tests       | ✅ 18 → Div, Div → 18 | Fully tested |
+
+**Test location:** `hologram-onnx-compiler/tests/onnx_single_node/test_math.rs`
+
+**Example test cases:**
+
+- Add: [1,2,3] + [4,5,6] = [5,7,9]
+- Sub: [5,7,9] - [1,2,3] = [4,5,6]
+- Mul: [2,3,4] \* [5,6,7] = [10,18,28]
+- Div: [10,20,30] / [2,4,5] = [5,5,6]
+
+#### Matrix Operators (2)
+
+| Operator | Test File      | Single-Node Tests | Composition Tests           | Status       |
+| -------- | -------------- | ----------------- | --------------------------- | ------------ |
+| MatMul   | test_matrix.rs | ✅ 4+ tests       | ✅ 18 → MatMul, MatMul → 18 | Fully tested |
+| Gemm     | test_matrix.rs | ✅ 4+ tests       | ✅ 18 → Gemm, Gemm → 18     | Fully tested |
+
+**Test location:** `hologram-onnx-compiler/tests/onnx_single_node/test_matrix.rs`
+
+**Example test cases:**
+
+- MatMul: [[1,2],[3,4]] @ [[5,6],[7,8]] = [[19,22],[43,50]]
+- Gemm: Y = alpha*A@B + beta*C with various alpha/beta values
+
+#### Activation Operators (3)
+
+| Operator | Test File          | Single-Node Tests | Composition Tests             | Status       |
+| -------- | ------------------ | ----------------- | ----------------------------- | ------------ |
+| Relu     | test_activation.rs | ✅ 4+ tests       | ✅ 18 → Relu, Relu → 18       | Fully tested |
+| Sigmoid  | test_activation.rs | ✅ 4+ tests       | ✅ 18 → Sigmoid, Sigmoid → 18 | Fully tested |
+| Tanh     | test_activation.rs | ✅ 4+ tests       | ✅ 18 → Tanh, Tanh → 18       | Fully tested |
+
+**Test location:** `hologram-onnx-compiler/tests/onnx_single_node/test_activation.rs`
+
+**Example test cases:**
+
+- Relu: [-2,-1,0,1,2] → [0,0,0,1,2]
+- Sigmoid: [0] → [0.5], known value tables
+- Tanh: [0] → [0], known value tables
+
+#### Tensor Manipulation Operators (6)
+
+| Operator  | Test File                   | Single-Node Tests | Composition Tests | Status       |
+| --------- | --------------------------- | ----------------- | ----------------- | ------------ |
+| Reshape   | test_tensor_manipulation.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| Concat    | test_tensor_manipulation.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| Slice     | test_tensor_manipulation.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| Gather    | test_tensor_manipulation.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| Unsqueeze | test_tensor_manipulation.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| Flatten   | test_tensor_manipulation.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+
+**Test location:** `hologram-onnx-compiler/tests/onnx_single_node/test_tensor_manipulation.rs`
+
+**Example test cases:**
+
+- Reshape: [1,2,3,4,5,6] shape[2,3] → [[1,2,3],[4,5,6]]
+- Concat: [1,2] + [3,4] axis=0 → [1,2,3,4]
+- Slice: [0,1,2,3,4][1:4] → [1,2,3]
+- Gather: [[1,2],[3,4]] indices[1] axis=0 → [3,4]
+- Unsqueeze: [1,2,3] axes[0] → [[1,2,3]]
+- Flatten: [[1,2],[3,4]] axis=0 → [[1,2,3,4]]
+
+#### Utility Operators (4)
+
+| Operator | Test File       | Single-Node Tests | Composition Tests | Status       |
+| -------- | --------------- | ----------------- | ----------------- | ------------ |
+| Constant | test_utility.rs | ✅ 5 tests        | Planned           | Fully tested |
+| Range    | test_utility.rs | ✅ 5 tests        | Planned           | Fully tested |
+| Shape    | test_utility.rs | ✅ 5 tests        | Planned           | Fully tested |
+| ArgMax   | test_utility.rs | ✅ 5 tests        | Planned           | Fully tested |
+
+**Test location:** `hologram-onnx-compiler/tests/onnx_single_node/test_utility.rs`
+
+**Example test cases:**
+
+- Constant: value=[1,2,3] → [1,2,3]
+- Range: start=0, limit=5, delta=1 → [0,1,2,3,4]
+- Shape: shape=[2,3] → [2.0,3.0]
+- ArgMax: [3,1,4,1,5] axis=0 → [4]
+
+#### Custom/Extension Operators (4)
+
+| Operator               | Test File             | Single-Node Tests | Composition Tests | Status       |
+| ---------------------- | --------------------- | ----------------- | ----------------- | ------------ |
+| LayerNormalization     | test_normalization.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| SkipLayerNormalization | test_normalization.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| BiasGelu               | test_normalization.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+| Attention              | test_normalization.rs | ✅ 4+ tests       | ✅ Tested         | Fully tested |
+
+**Test location:** `hologram-onnx-compiler/tests/onnx_single_node/test_normalization.rs`
+
+### Schema-Only Coverage (14 Operators)
+
+These operators have Atlas schemas but no HRM execution yet. They are prioritized for implementation in [Phase 1 and Phase 2](#tier-1-high-priority-next-10-operators).
+
+| Operator              | Category      | Schema Location                                      | Priority   |
+| --------------------- | ------------- | ---------------------------------------------------- | ---------- |
+| Gelu                  | Activation    | schemas/onnx/activation/gelu.py                      | Tier 2     |
+| LeakyRelu             | Activation    | schemas/onnx/activation/leakyrelu.py                 | Tier 2     |
+| Softmax               | Activation    | schemas/onnx/activation/softmax.py                   | **Tier 1** |
+| BatchNormalization    | Normalization | schemas/onnx/normalization/batch_normalization.py    | **Tier 1** |
+| InstanceNormalization | Normalization | schemas/onnx/normalization/instance_normalization.py | Tier 2     |
+| ReduceMean            | Reduction     | schemas/onnx/reduction/                              | **Tier 1** |
+| ReduceSum             | Reduction     | schemas/onnx/reduction/                              | **Tier 1** |
+| AveragePool           | Pooling       | schemas/onnx/pooling/averagepool.py                  | Tier 2     |
+| GlobalAveragePool     | Pooling       | schemas/onnx/pooling/global_average_pool.py          | Tier 2     |
+| Transpose             | Shape         | schemas/onnx/shape/transpose.py                      | **Tier 1** |
+| Squeeze               | Shape         | schemas/onnx/shape/squeeze.py                        | **Tier 1** |
+| Conv                  | Convolution   | schemas/onnx/conv/conv.py                            | **Tier 1** |
+| Cast                  | Utility       | schemas/onnx/other/cast.py                           | Tier 2     |
+| ScalarMul             | Custom        | schemas/onnx/core/scalar_mul.py                      | Tier 3     |
+
+**Next steps for these operators:**
+
+1. Implement HRM execution following [Step 2](#step-2-implement-hrm-execution)
+2. Write single-node tests following [Step 3](#step-3-write-single-node-tests)
+3. Add to composition matrix following [Step 4](#step-4-add-to-two-node-composition-matrix)
+
+### Test Coverage Statistics
+
+| Category       | Operators | Single-Node Tests | Infrastructure Tests | Total Tests |
+| -------------- | --------- | ----------------- | -------------------- | ----------- |
+| Math           | 4         | 16                | -                    | 16          |
+| Matrix         | 2         | 8                 | -                    | 8           |
+| Activation     | 3         | 12                | -                    | 12          |
+| Tensor         | 6         | 25                | -                    | 25          |
+| Utility        | 4         | 20                | -                    | 20          |
+| Normalization  | 4         | 21                | -                    | 21          |
+| Infrastructure | -         | -                 | 8                    | 8           |
+| **Total**      | **23**    | **102**           | **8**                | **110**     |
+
+**Coverage metrics:**
+
+- Single-node isolation: 23/23 operators (100%)
+- Operator test count: 102 tests
+- Infrastructure test count: 8 tests
+- **Total test count: 110 tests**
+- Test pass rate: 100% (all tests passing)
+- Average tests per operator: 4.4 tests
+
+**Test execution:**
+
+```bash
+cargo test --test onnx_single_node_suite
+# test result: ok. 110 passed; 0 failed; 0 ignored; 0 measured
+```
+
+**Note:** Two-node composition testing is planned but not yet implemented. When added, this will generate N×N = 529 additional tests for all operator pairs.
+
+---
+
+## 8. Complete Implementation Example
+
+This section provides a complete end-to-end example of implementing a new ONNX operator: **Softmax**.
+
+### Why Softmax?
+
+- **High priority:** Required for attention mechanisms and classification
+- **Medium complexity:** Multi-pass operation (max, exp, sum, normalize)
+- **Good learning example:** Demonstrates handling numerical stability
+
+### Softmax Specification
+
+**ONNX Spec:** https://onnx.ai/onnx/operators/onnx__Softmax.html
+
+**Mathematical definition:**
+
+```
+For input X with shape [d_0, d_1, ..., d_n]:
+1. Compute max along axis for numerical stability: m = max(X, axis)
+2. Subtract max: X' = X - m
+3. Compute exp: E = exp(X')
+4. Compute sum: S = sum(E, axis)
+5. Normalize: Y = E / S
+```
+
+**Properties:**
+
+- Output values in range (0, 1)
+- Output sums to 1.0 along specified axis
+- Default axis = -1 (last axis)
+
+### Step 1: Create Atlas Schema
+
+**File:** `/workspace/schemas/onnx/activation/softmax.py`
+
+```python
+"""
+ONNX Softmax Operation
+
+ONNX Spec: https://onnx.ai/onnx/operators/onnx__Softmax.html
+
+Applies the Softmax function to an input tensor along a specified axis.
+Normalizes the input such that the elements of the n-dimensional output
+sum to 1 and are in the range (0, 1).
+
+For numerical stability, subtracts the max value before computing exp.
+
+Shapes:
+  - Input: [d_0, d_1, ..., d_n]
+  - Output: [d_0, d_1, ..., d_n] (same shape as input)
+
+Algorithm:
+  1. max_val = max(input, axis)
+  2. exp_values = exp(input - max_val)
+  3. sum_exp = sum(exp_values, axis)
+  4. output = exp_values / sum_exp
+"""
+
+from atlas_kernel import DeviceArray, f32, u32, get_global_id
+import math
+
+def softmax_subtract_max(
+    Input: DeviceArray[f32],
+    MaxVals: DeviceArray[f32],
+    Output: DeviceArray[f32],
+    n: u32,
+    axis_size: u32
+):
+    """
+    Step 1: Subtract max value for numerical stability
+
+    Parameters:
+    - Input: Input tensor
+    - MaxVals: Max values along axis
+    - Output: Input - max(Input, axis)
+    - n: Total elements
+    - axis_size: Size of axis dimension
+    """
+    idx = get_global_id()
+
+    if idx < n:
+        axis_idx = idx // axis_size
+        max_val = MaxVals[axis_idx]
+        Output[idx] = Input[idx] - max_val
+
+def softmax_exp(
+    Input: DeviceArray[f32],
+    Output: DeviceArray[f32],
+    n: u32
+):
+    """
+    Step 2: Compute exponential
+
+    Parameters:
+    - Input: Input tensor (after max subtraction)
+    - Output: exp(Input)
+    - n: Total elements
+    """
+    idx = get_global_id()
+
+    if idx < n:
+        Output[idx] = math.exp(Input[idx])
+
+def softmax_normalize(
+    ExpVals: DeviceArray[f32],
+    SumVals: DeviceArray[f32],
+    Output: DeviceArray[f32],
+    n: u32,
+    axis_size: u32
+):
+    """
+    Step 3: Normalize by sum
+
+    Parameters:
+    - ExpVals: Exponential values
+    - SumVals: Sum of exp values along axis
+    - Output: ExpVals / sum(ExpVals, axis)
+    - n: Total elements
+    - axis_size: Size of axis dimension
+    """
+    idx = get_global_id()
+
+    if idx < n:
+        axis_idx = idx // axis_size
+        sum_val = SumVals[axis_idx]
+        Output[idx] = ExpVals[idx] / sum_val
+```
+
+**Compile schema:**
+
+```bash
+cd /workspace/schemas/stdlib
+python3 atlas_compile.py ../onnx/activation/softmax.py
+```
+
+This creates three JSON kernels:
+
+- `softmax_subtract_max.json`
+- `softmax_exp.json`
+- `softmax_normalize.json`
+
+### Step 2: Implement HRM Execution
+
+**File:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/src/hrm/ops/activation.rs`
+
+Add to existing file:
+
+```rust
+#[derive(Debug, Clone)]
+pub struct SoftmaxOp {
+    /// Axis along which to compute softmax (-1 for last axis)
+    pub axis: i64,
+}
+
+impl<T: Numeric> OnnxHRMNode<T> for SoftmaxOp {
+    fn op_type(&self) -> &'static str {
+        "Softmax"
+    }
+
+    fn execute(
+        &self,
+        atlas: &Atlas,
+        inputs: &[&[T]],
+    ) -> Result<Vec<T>> {
+        // Validate inputs
+        self.validate_inputs(inputs)?;
+
+        let input = inputs[0];
+        let n = input.len();
+
+        // For simplicity, assume 1D tensor (can extend to multi-dimensional)
+        // In 1D case, softmax normalizes the entire vector
+
+        // Step 1: Find max value (for numerical stability)
+        let max_val = input.iter()
+            .map(|&x| x.to_f32())
+            .fold(f32::NEG_INFINITY, f32::max);
+
+        // Step 2: Subtract max and compute exp
+        let exp_vals: Vec<f32> = input.iter()
+            .map(|&x| (x.to_f32() - max_val).exp())
+            .collect();
+
+        // Step 3: Compute sum of exp values
+        let sum_exp: f32 = exp_vals.iter().sum();
+
+        // Step 4: Normalize
+        let output: Vec<T> = exp_vals.iter()
+            .map(|&x| T::from_f32(x / sum_exp))
+            .collect();
+
+        Ok(output)
+    }
+
+    fn validate_inputs(&self, inputs: &[&[T]]) -> Result<()> {
+        if inputs.len() != 1 {
+            return Err(OnnxError::InvalidInputCount {
+                op: self.op_type(),
+                expected: 1,
+                actual: inputs.len(),
+            });
+        }
+
+        if inputs[0].is_empty() {
+            return Err(OnnxError::InvalidInput {
+                op: self.op_type(),
+                message: "Input tensor cannot be empty".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+}
+```
+
+**Add to OnnxOperator enum in `src/hrm/ops/mod.rs`:**
+
+```rust
+#[derive(Debug, Clone)]
+pub enum OnnxOperator<T: Numeric> {
+    // Existing variants...
+    Relu(ReluOp),
+    Sigmoid(SigmoidOp),
+    Tanh(TanhOp),
+    Softmax(SoftmaxOp),  // ← Add this
+}
+
+impl<T: Numeric> OnnxHRMNode<T> for OnnxOperator<T> {
+    fn op_type(&self) -> &'static str {
+        match self {
+            // Existing matches...
+            Self::Relu(op) => op.op_type(),
+            Self::Sigmoid(op) => op.op_type(),
+            Self::Tanh(op) => op.op_type(),
+            Self::Softmax(op) => op.op_type(),  // ← Add this
+        }
+    }
+
+    fn execute(&self, atlas: &Atlas, inputs: &[&[T]]) -> Result<Vec<T>> {
+        match self {
+            // Existing matches...
+            Self::Relu(op) => op.execute(atlas, inputs),
+            Self::Sigmoid(op) => op.execute(atlas, inputs),
+            Self::Tanh(op) => op.execute(atlas, inputs),
+            Self::Softmax(op) => op.execute(atlas, inputs),  // ← Add this
+        }
+    }
+
+    fn validate_inputs(&self, inputs: &[&[T]]) -> Result<()> {
+        match self {
+            // Existing matches...
+            Self::Relu(op) => op.validate_inputs(inputs),
+            Self::Sigmoid(op) => op.validate_inputs(inputs),
+            Self::Tanh(op) => op.validate_inputs(inputs),
+            Self::Softmax(op) => op.validate_inputs(inputs),  // ← Add this
+        }
+    }
+}
+```
+
+**Verify compilation:**
+
+```bash
+cd /workspace/hologram-sdk/rust/hologram-onnx-compiler
+cargo build
+cargo clippy -- -D warnings
+```
+
+### Step 3: Write Single-Node Tests
+
+**File:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/test_activation.rs`
+
+Add to existing file:
+
+```rust
+#[cfg(test)]
+mod test_softmax {
+    use super::*;
+
+    #[test]
+    fn test_softmax_basic() {
+        // Create single-node ONNX graph
+        let graph = OnnxGraphBuilder::new()
+            .add_input("input", &[3], DataType::Float32)
+            .add_node("Softmax", &["input"], &["output"])
+            .add_output("output", &[3], DataType::Float32)
+            .build();
+
+        // Input: [1.0, 2.0, 3.0]
+        // Max: 3.0
+        // After subtract max: [-2.0, -1.0, 0.0]
+        // After exp: [0.135, 0.368, 1.0]
+        // Sum: 1.503
+        // After normalize: [0.090, 0.245, 0.665]
+        let input = vec![1.0, 2.0, 3.0];
+        let expected = vec![0.090030573, 0.24472847, 0.66524096];
+
+        let result = execute_single_node_graph(&graph, &[input]).unwrap();
+
+        assert_tensors_equal(&result, &expected, 1e-6);
+
+        // Verify sum to 1.0
+        let sum: f32 = result.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-6, "Softmax output should sum to 1.0");
+    }
+
+    #[test]
+    fn test_softmax_edge_cases() {
+        let test_cases = vec![
+            // All zeros
+            (
+                vec![0.0, 0.0, 0.0],
+                vec![0.333333, 0.333333, 0.333333],  // Uniform distribution
+            ),
+            // Large values (test numerical stability)
+            (
+                vec![100.0, 200.0, 300.0],
+                vec![0.0, 0.0, 1.0],  // Should not overflow
+            ),
+            // Negative values
+            (
+                vec![-1.0, -2.0, -3.0],
+                vec![0.665, 0.245, 0.090],  // Reverses order from basic test
+            ),
+            // Single element
+            (
+                vec![5.0],
+                vec![1.0],  // Only element gets probability 1.0
+            ),
+        ];
+
+        for (input, expected) in test_cases {
+            let graph = OnnxGraphBuilder::new()
+                .add_input("input", &[input.len() as i64], DataType::Float32)
+                .add_node("Softmax", &["input"], &["output"])
+                .add_output("output", &[input.len() as i64], DataType::Float32)
+                .build();
+
+            let result = execute_single_node_graph(&graph, &[input]).unwrap();
+            assert_tensors_equal(&result, &expected, 1e-4);
+
+            // Verify sum to 1.0
+            let sum: f32 = result.iter().sum();
+            assert!((sum - 1.0).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_softmax_various_shapes() {
+        // Test different sizes
+        let sizes = vec![2, 5, 10, 100];
+
+        for size in sizes {
+            let input: Vec<f32> = (0..size).map(|i| i as f32).collect();
+
+            let graph = OnnxGraphBuilder::new()
+                .add_input("input", &[size as i64], DataType::Float32)
+                .add_node("Softmax", &["input"], &["output"])
+                .add_output("output", &[size as i64], DataType::Float32)
+                .build();
+
+            let result = execute_single_node_graph(&graph, &[input]).unwrap();
+
+            // Verify properties
+            assert_eq!(result.len(), size);
+
+            // All values in (0, 1)
+            assert!(result.iter().all(|&x| x > 0.0 && x < 1.0));
+
+            // Sum to 1.0
+            let sum: f32 = result.iter().sum();
+            assert!((sum - 1.0).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_softmax_onnx_roundtrip() {
+        let graph = OnnxGraphBuilder::new()
+            .add_input("input", &[4], DataType::Float32)
+            .add_node("Softmax", &["input"], &["output"])
+            .add_output("output", &[4], DataType::Float32)
+            .build();
+
+        // Serialize to bytes
+        let bytes = graph_to_bytes(&graph);
+
+        // Deserialize
+        let deserialized = graph_from_bytes(&bytes);
+
+        // Execute
+        let input = vec![1.0, 2.0, 3.0, 4.0];
+        let result = execute_single_node_graph(&deserialized, &[input]).unwrap();
+
+        // Verify correct output
+        assert_eq!(result.len(), 4);
+        assert!(result.iter().all(|&x| x > 0.0 && x < 1.0));
+
+        let sum: f32 = result.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-6);
+    }
+}
+```
+
+**Run tests:**
+
+```bash
+cargo test --test onnx_single_node test_softmax
+```
+
+**Expected output:**
+
+```
+running 4 tests
+test test_softmax::test_softmax_basic ... ok
+test test_softmax::test_softmax_edge_cases ... ok
+test test_softmax::test_softmax_various_shapes ... ok
+test test_softmax::test_softmax_onnx_roundtrip ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+### Step 4: Add to Composition Matrix
+
+**File:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_two_node/mod.rs`
+
+Add operator metadata:
+
+```rust
+pub const OPERATOR_REGISTRY: &[OperatorMetadata] = &[
+    // Existing operators...
+    OperatorMetadata {
+        op_type: "Relu",
+        default_input_shape: vec![3],
+        default_output_shape: vec![3],
+        produces_scalar: false,
+        requires_attributes: false,
+        min_inputs: 1,
+        max_inputs: 1,
+    },
+    OperatorMetadata {
+        op_type: "Softmax",  // ← Add this
+        default_input_shape: vec![3],
+        default_output_shape: vec![3],
+        produces_scalar: false,
+        requires_attributes: false,
+        min_inputs: 1,
+        max_inputs: 1,
+    },
+];
+```
+
+**File:** `/workspace/hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_two_node/test_all_compositions.rs`
+
+Update test generation macro:
+
+```rust
+generate_composition_tests!(
+    Add, Sub, Mul, Div, MatMul, Gemm, Relu, Sigmoid, Tanh, Softmax,  // ← Add Softmax
+    Reshape, Concat, Slice, Gather, Unsqueeze, Flatten,
+    Constant, Range, ArgMax
+    ;
+    Add, Sub, Mul, Div, MatMul, Gemm, Relu, Sigmoid, Tanh, Softmax,  // ← Add Softmax
+    Reshape, Concat, Slice, Gather, Unsqueeze, Flatten,
+    Constant, Range, ArgMax
+);
+```
+
+This generates 38 new composition tests:
+
+- 19 tests: existing operators → Softmax
+- 19 tests: Softmax → existing operators
+
+**Run composition tests:**
+
+```bash
+cargo test --test onnx_two_node
+```
+
+**Sample generated tests:**
+
+```
+test_composition_add_to_softmax ... ok
+test_composition_softmax_to_relu ... ok
+test_composition_matmul_to_softmax ... ok
+test_composition_softmax_to_argmax ... ok
+... (34 more tests)
+```
+
+### Step 5: Comprehensive Validation
+
+**Run all tests:**
+
+```bash
+# All ONNX tests
+cargo test onnx_
+
+# Full workspace
+cargo test --workspace
+```
+
+**Check warnings:**
+
+```bash
+cargo clippy --workspace -- -D warnings
+```
+
+**Update documentation:**
+
+Add Softmax to the [Current Implementation Status](#7-current-implementation-status) table.
+
+### Summary
+
+**Softmax implementation complete:**
+
+✅ Atlas schema created (3 kernels)
+✅ HRM execution implemented
+✅ 4 single-node tests written and passing
+✅ 38 composition tests generated and passing
+✅ Zero warnings
+✅ Documentation updated
+
+**Test coverage:**
+
+- Single-node: 4 tests (basic, edge cases, shapes, roundtrip)
+- Composition: 38 tests (19→Softmax + Softmax→19)
+- **Total new tests:** 42
+
+**New operator count:**
+
+- Previous: 18 operators, 72 single-node tests, 324 composition tests
+- After Softmax: 19 operators, 76 single-node tests, 361 composition tests
+- **Total tests:** 437 tests
+
+This example demonstrates the complete workflow for adding a new ONNX operator to hologramapp with full test coverage.
+
+---
+
+## 9. Code Generation with `macro_rules!`
+
+This section documents the macro system implemented in the ONNX compiler to reduce boilerplate code.
+
+### Overview
+
+The `hologram-onnx-compiler` uses Rust macros to eliminate repetitive code patterns:
+
+1. **✅ Operator enum variant dispatch** - Matching on operator type to call the right implementation (IMPLEMENTED)
+2. **✅ Test generation** - Creating similar test structures for each operator (IMPLEMENTED)
+3. **Protobuf initialization** - Setting up ONNX protobuf structures with required fields (Designed, not yet implemented)
+4. **Numeric trait dispatch** - Dispatching based on data type (Designed, not yet implemented)
+
+**Current Status:**
+- **Operator dispatch macro:** Fully implemented and in use (reduces 150+ lines to 37 lines, 80% reduction)
+- **Test generation macros:** Fully implemented (5 macros available, reduces ~40% test boilerplate)
+- **Protobuf/type dispatch macros:** Designed but not yet implemented (future work)
+
+### Macro 1: Operator Trait Dispatch (✅ IMPLEMENTED)
+
+**Implementation:** [hologram-onnx-compiler/src/hrm/ops/macros.rs](../../hologram-sdk/rust/hologram-onnx-compiler/src/hrm/ops/macros.rs)
+
+**Problem:** The `OnnxOperator<T>` enum requires repetitive match arms for every operator:
+
+```rust
+impl<T: Numeric> OnnxHRMNode<T> for OnnxOperator<T> {
+    fn op_type(&self) -> &'static str {
+        match self {
+            Self::Add(op) => op.op_type(),
+            Self::Sub(op) => op.op_type(),
+            Self::Mul(op) => op.op_type(),
+            // ... 20+ more identical patterns
+        }
+    }
+
+    fn execute(&self, atlas: &Atlas, inputs: &[&[T]]) -> Result<Vec<T>> {
+        match self {
+            Self::Add(op) => op.execute(atlas, inputs),
+            Self::Sub(op) => op.sub(atlas, inputs),
+            Self::Mul(op) => op.execute(atlas, inputs),
+            // ... 20+ more identical patterns
+        }
+    }
+
+    fn validate_inputs(&self, inputs: &[&[T]]) -> Result<()> {
+        match self {
+            Self::Add(op) => op.validate_inputs(inputs),
+            Self::Sub(op) => op.validate_inputs(inputs),
+            Self::Mul(op) => op.validate_inputs(inputs),
+            // ... 20+ more identical patterns
+        }
+    }
+}
+```
+
+**Solution:** Macro to generate the enum and all trait implementations:
+
+```rust
+/// Generate ONNX operator enum with automatic trait delegation
+macro_rules! define_onnx_operators {
+    (
+        $(
+            $variant:ident($op_type:ty)
+        ),* $(,)?
+    ) => {
+        /// Enum of all ONNX operators
+        #[derive(Debug, Clone)]
+        pub enum OnnxOperator<T: Numeric> {
+            $(
+                $variant($op_type),
+            )*
+        }
+
+        impl<T: Numeric> OnnxHRMNode<T> for OnnxOperator<T> {
+            fn op_type(&self) -> &'static str {
+                match self {
+                    $(
+                        Self::$variant(op) => op.op_type(),
+                    )*
+                }
+            }
+
+            fn execute(&self, atlas: &Atlas, inputs: &[&[T]]) -> Result<Vec<T>> {
+                match self {
+                    $(
+                        Self::$variant(op) => op.execute(atlas, inputs),
+                    )*
+                }
+            }
+
+            fn validate_inputs(&self, inputs: &[&[T]]) -> Result<()> {
+                match self {
+                    $(
+                        Self::$variant(op) => op.validate_inputs(inputs),
+                    )*
+                }
+            }
+        }
+    };
+}
+```
+
+**Usage:**
+
+```rust
+define_onnx_operators! {
+    // Math
+    Add(AddOp),
+    Sub(SubOp),
+    Mul(MulOp),
+    Div(DivOp),
+
+    // Matrix
+    MatMul(MatMulOp),
+    Gemm(GemmOp),
+
+    // Activation
+    Relu(ReluOp),
+    Sigmoid(SigmoidOp),
+    Tanh(TanhOp),
+
+    // Tensor
+    Reshape(ReshapeOp),
+    Concat(ConcatOp),
+    Slice(SliceOp),
+    Gather(GatherOp),
+    Unsqueeze(UnsqueezeOp),
+    Flatten(FlattenOp),
+
+    // Utility
+    Constant(ConstantOp<T>),
+    Range(RangeOp),
+    Shape(ShapeOp),
+    ArgMax(ArgMaxOp),
+
+    // Normalization
+    LayerNormalization(LayerNormalizationOp),
+    SkipLayerNormalization(SkipLayerNormalizationOp),
+    BiasGelu(BiasGeluOp),
+    Attention(AttentionOp),
+}
+```
+
+**Benefits:**
+- Adding new operator requires just one line
+- Guaranteed consistency across all trait implementations
+- No risk of forgetting to update a match arm
+- **Currently in production use** - All 23 operators use this macro
+
+**Usage in production:**
+```rust
+// File: hologram-onnx-compiler/src/hrm/ops/mod.rs
+crate::define_onnx_operators! {
+    // Math operators (4)
+    Add(AddOp),
+    Sub(SubOp),
+    Mul(MulOp),
+    Div(DivOp),
+
+    // Matrix operators (2)
+    MatMul(MatMulOp),
+    Gemm(GemmOp),
+
+    // Activation operators (3)
+    Relu(ReluOp),
+    Sigmoid(SigmoidOp),
+    Tanh(TanhOp),
+
+    // Tensor operators (6)
+    Reshape(ReshapeOp),
+    Concat(ConcatOp),
+    Slice(SliceOp),
+    Gather(GatherOp),
+    Unsqueeze(UnsqueezeOp),
+    Flatten(FlattenOp),
+
+    // Shape operators (4)
+    Constant(ConstantOp<T>),
+    Range(RangeOp),
+    Shape(ShapeOp),
+    ArgMax(ArgMaxOp),
+
+    // Normalization operators (4)
+    LayerNormalization(LayerNormalizationOp),
+    SkipLayerNormalization(SkipLayerNormalizationOp),
+    BiasGelu(BiasGeluOp),
+    Attention(AttentionOp),
+}
+```
+
+### Macro 2: Test Generation (✅ IMPLEMENTED)
+
+**Implementation:** [hologram-onnx-compiler/tests/onnx_single_node/mod.rs](../../hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/mod.rs) (lines 438-659)
+
+**Available macros:**
+1. `setup_test!` - Setup Atlas and operator
+2. `execute_op!` - Execute operator with cleaner syntax
+3. `test_operator_basic!` - Generate complete basic test
+4. `test_operator_edge_cases!` - Generate edge cases test
+5. `test_operator_module!` - Generate test module structure
+
+**Problem:** Each operator has nearly identical test structure:
+
+```rust
+#[test]
+fn test_add_basic() {
+    let atlas = Atlas::with_cache().unwrap();
+    let add_op = AddOp;
+    let result = add_op.execute(&atlas, &[&input_a, &input_b]).unwrap();
+    assert_tensors_equal(&result, &expected, 1e-6);
+}
+
+#[test]
+fn test_sub_basic() {
+    let atlas = Atlas::with_cache().unwrap();
+    let sub_op = SubOp;
+    let result = sub_op.execute(&atlas, &[&input_a, &input_b]).unwrap();
+    assert_tensors_equal(&result, &expected, 1e-6);
+}
+// ... many more similar tests
+```
+
+**Solution:** Macro for test generation:
+
+```rust
+/// Generate basic operator tests
+macro_rules! test_operator_basic {
+    (
+        $test_name:ident,
+        $op_name:ident,
+        $op_expr:expr,
+        $inputs:expr,
+        $expected:expr
+    ) => {
+        #[test]
+        fn $test_name() {
+            let atlas = Atlas::with_cache().unwrap();
+            let op = $op_expr;
+
+            let result = op.execute(&atlas, $inputs).unwrap();
+
+            assert_tensors_equal(&result, &$expected, 1e-6);
+        }
+    };
+}
+
+/// Generate edge case tests
+macro_rules! test_operator_edge_cases {
+    (
+        $test_name:ident,
+        $op_expr:expr,
+        [$(($inputs:expr, $expected:expr)),* $(,)?]
+    ) => {
+        #[test]
+        fn $test_name() {
+            let atlas = Atlas::with_cache().unwrap();
+            let op = $op_expr;
+
+            $(
+                let result = op.execute(&atlas, $inputs).unwrap();
+                assert_tensors_equal(&result, &$expected, 1e-6);
+            )*
+        }
+    };
+}
+```
+
+**Usage:**
+
+```rust
+mod test_add {
+    use super::*;
+
+    test_operator_basic!(
+        test_add_basic,
+        Add,
+        AddOp,
+        &[&vec![1.0, 2.0, 3.0], &vec![4.0, 5.0, 6.0]],
+        vec![5.0, 7.0, 9.0]
+    );
+
+    test_operator_edge_cases!(
+        test_add_edge_cases,
+        AddOp,
+        [
+            (&[&vec![0.0, 0.0], &vec![1.0, 2.0]], vec![1.0, 2.0]),  // Zero + values
+            (&[&vec![-1.0, -2.0], &vec![1.0, 2.0]], vec![0.0, 0.0]), // Negative + positive
+            (&[&vec![1e6, 1e7], &vec![1.0, 2.0]], vec![1e6 + 1.0, 1e7 + 2.0]), // Large values
+        ]
+    );
+}
+```
+
+**Benefits:**
+- Consistent test structure across all operators
+- **~40% less boilerplate** in test code
+- Easy to add new test patterns
+- **Currently available** - Ready for use in new operator tests
+
+**Documentation:**
+- [MACRO_EXAMPLES.md](../../hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/MACRO_EXAMPLES.md) - Complete usage guide with examples
+- [Test README](../../hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/README.md) - Testing methodology
+- [MACROS.md](../hologram-onnx-compiler/MACROS.md) - Complete macro system documentation
+
+### Macro 3: Protobuf Initialization (Designed, Not Yet Implemented)
+
+**Status:** Design complete, implementation pending
+
+**Problem:** ONNX protobuf structures require many boilerplate fields:
+
+```rust
+NodeProto {
+    input: vec!["input_a".to_string(), "input_b".to_string()],
+    output: vec!["output".to_string()],
+    name: "add_node".to_string(),
+    op_type: "Add".to_string(),
+    domain: String::new(),
+    attribute: Vec::new(),
+    doc_string: String::new(),
+    device_configurations: Vec::new(),
+    metadata_props: Vec::new(),
+    overload: String::new(),
+}
+```
+
+**Solution:** Macro for protobuf node creation:
+
+```rust
+/// Create ONNX NodeProto with sensible defaults
+macro_rules! onnx_node {
+    (
+        $op_type:expr,
+        inputs: [$($input:expr),* $(,)?],
+        outputs: [$($output:expr),* $(,)?]
+        $(, name: $name:expr)?
+        $(, attributes: {$($attr_name:expr => $attr_value:expr),* $(,)?})?
+    ) => {
+        {
+            use crate::proto::onnx::*;
+
+            #[allow(unused_mut)]
+            let mut node = NodeProto {
+                input: vec![$($input.to_string()),*],
+                output: vec![$($output.to_string()),*],
+                name: onnx_node!(@name $($name)?),
+                op_type: $op_type.to_string(),
+                domain: String::new(),
+                attribute: vec![],
+                doc_string: String::new(),
+                device_configurations: Vec::new(),
+                metadata_props: Vec::new(),
+                overload: String::new(),
+            };
+
+            $(
+                node.attribute = vec![
+                    $(
+                        onnx_attribute!($attr_name, $attr_value),
+                    )*
+                ];
+            )?
+
+            node
+        }
+    };
+
+    // Helper: default name
+    (@name) => { String::new() };
+
+    // Helper: explicit name
+    (@name $name:expr) => { $name.to_string() };
+}
+
+/// Create ONNX attribute
+macro_rules! onnx_attribute {
+    ($name:expr, int: $value:expr) => {
+        AttributeProto {
+            name: $name.to_string(),
+            i: $value,
+            ..Default::default()
+        }
+    };
+
+    ($name:expr, float: $value:expr) => {
+        AttributeProto {
+            name: $name.to_string(),
+            f: $value,
+            ..Default::default()
+        }
+    };
+
+    ($name:expr, string: $value:expr) => {
+        AttributeProto {
+            name: $name.to_string(),
+            s: $value.as_bytes().to_vec(),
+            ..Default::default()
+        }
+    };
+}
+```
+
+**Usage:**
+
+```rust
+// Simple node
+let add_node = onnx_node!(
+    "Add",
+    inputs: ["a", "b"],
+    outputs: ["c"]
+);
+
+// Node with attributes
+let conv_node = onnx_node!(
+    "Conv",
+    inputs: ["x", "w"],
+    outputs: ["y"],
+    name: "conv1",
+    attributes: {
+        "kernel_shape" => int: 3,
+        "strides" => int: 1,
+        "pads" => int: 0
+    }
+);
+```
+
+**Benefits:**
+- Cleaner, more readable code
+- No risk of forgetting required fields
+- Type-safe attribute creation
+
+**Future work:** This macro would be useful for graph construction and testing utilities.
+
+### Macro 4: Data Type Dispatch (Designed, Not Yet Implemented)
+
+**Status:** Design complete, implementation pending
+
+**Problem:** Many operators need to dispatch based on ONNX data type:
+
+```rust
+match tensor.dtype() {
+    DataType::Float32 => self.execute_generic::<f32>(exec, inputs).await,
+    DataType::Float64 => self.execute_generic::<f64>(exec, inputs).await,
+    DataType::Int32 => self.execute_generic::<i32>(exec, inputs).await,
+    DataType::Int64 => self.execute_generic::<i64>(exec, inputs).await,
+    DataType::Uint8 => self.execute_generic::<u8>(exec, inputs).await,
+    DataType::Uint16 => self.execute_generic::<u16>(exec, inputs).await,
+    DataType::Uint32 => self.execute_generic::<u32>(exec, inputs).await,
+    DataType::Uint64 => self.execute_generic::<u64>(exec, inputs).await,
+    DataType::Int8 => self.execute_generic::<i8>(exec, inputs).await,
+    DataType::Int16 => self.execute_generic::<i16>(exec, inputs).await,
+    DataType::Float16 => self.execute_generic::<f16>(exec, inputs).await,
+    DataType::Bfloat16 => self.execute_generic::<bf16>(exec, inputs).await,
+    dtype => Err(OnnxError::UnsupportedType(dtype as i32)),
+}
+```
+
+**Solution:** Macro for data type dispatch:
+
+```rust
+/// Dispatch on ONNX DataType to Rust numeric type
+macro_rules! dispatch_numeric_type {
+    ($dtype:expr, $handler:expr) => {
+        match $dtype {
+            DataType::Float32 => $handler::<f32>(),
+            DataType::Float64 => $handler::<f64>(),
+            DataType::Float16 => $handler::<f16>(),
+            DataType::Bfloat16 => $handler::<bf16>(),
+            DataType::Int8 => $handler::<i8>(),
+            DataType::Int16 => $handler::<i16>(),
+            DataType::Int32 => $handler::<i32>(),
+            DataType::Int64 => $handler::<i64>(),
+            DataType::Uint8 => $handler::<u8>(),
+            DataType::Uint16 => $handler::<u16>(),
+            DataType::Uint32 => $handler::<u32>(),
+            DataType::Uint64 => $handler::<u64>(),
+            dtype => Err(OnnxError::UnsupportedType(dtype as i32)),
+        }
+    };
+}
+```
+
+**Usage:**
+
+```rust
+// Before
+match tensor.dtype() {
+    DataType::Float32 => self.execute_generic::<f32>(exec, inputs).await,
+    DataType::Float64 => self.execute_generic::<f64>(exec, inputs).await,
+    // ... 10+ more lines
+    dtype => Err(OnnxError::UnsupportedType(dtype as i32)),
+}
+
+// After
+dispatch_numeric_type!(tensor.dtype(), |type| {
+    self.execute_generic::<type>(exec, inputs).await
+})
+```
+
+**Benefits:**
+- Single source of truth for type mappings
+- Guaranteed to handle all numeric types
+- Easy to update when adding new types
+
+### Implementation Status
+
+**✅ Phase 1: Operator Dispatch Macro** (COMPLETED)
+- ✅ Implemented `define_onnx_operators!` macro
+- ✅ Migrated all 23 operators to use it
+- ✅ Reduced 150+ lines to 37 lines (80% reduction)
+- **Status:** In production use, all tests passing
+
+**✅ Phase 2: Test Generation Macros** (COMPLETED)
+- ✅ Implemented 5 test generation macros
+- ✅ Created comprehensive documentation (MACRO_EXAMPLES.md)
+- ✅ Ready for use in new operator tests
+- ✅ Reduces test boilerplate by ~40%
+- **Status:** Available for immediate use
+
+**Phase 3: Protobuf Macros** (Future Work)
+- Design complete, implementation pending
+- Implement `onnx_node!` and `onnx_attribute!`
+- Migrate graph builder code
+- Improves readability and reduces errors
+
+**Phase 4: Type Dispatch Macro** (Future Work)
+- Design complete, implementation pending
+- Implement `dispatch_numeric_type!`
+- Migrate type dispatch code
+- Ensures comprehensive type coverage
+
+### Example: Complete Macro Usage
+
+```rust
+// Define all operators with one macro call
+define_onnx_operators! {
+    Add(AddOp),
+    Sub(SubOp),
+    Mul(MulOp),
+    // ... 20 more operators
+}
+
+// Generate tests with macros
+mod test_math {
+    test_operator_basic!(
+        test_add_basic,
+        Add,
+        AddOp,
+        &[&vec![1.0, 2.0], &vec![3.0, 4.0]],
+        vec![4.0, 6.0]
+    );
+
+    test_operator_edge_cases!(
+        test_add_edge_cases,
+        AddOp,
+        [
+            (&[&vec![0.0], &vec![1.0]], vec![1.0]),
+            (&[&vec![-1.0], &vec![1.0]], vec![0.0]),
+        ]
+    );
+}
+
+// Create ONNX graph nodes with macros
+let graph = OnnxGraphBuilder::new()
+    .add_node(onnx_node!(
+        "Add",
+        inputs: ["a", "b"],
+        outputs: ["c"]
+    ))
+    .build();
+
+// Dispatch on data type with macros
+let result = dispatch_numeric_type!(dtype, |T| {
+    execute_op::<T>(inputs)
+});
+```
+
+**Actual Impact (Measured):**
+- **Operator enum code reduction:** 80% (150+ lines → 37 lines)
+- **Test boilerplate reduction:** ~40% average
+- **Consistency:** Guaranteed uniform patterns across all 23 operators
+- **Maintainability:** Adding new operator requires just 1 line in macro invocation
+- **Error prevention:** Compile-time enforcement of required patterns
+- **Production status:** All 110 tests passing with macro-generated code
+
+**Files:**
+- **Operator dispatch:** [hologram-onnx-compiler/src/hrm/ops/macros.rs](../../hologram-sdk/rust/hologram-onnx-compiler/src/hrm/ops/macros.rs)
+- **Test generation:** [hologram-onnx-compiler/tests/onnx_single_node/mod.rs](../../hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/mod.rs) (lines 438-659)
+- **Usage examples:** [MACRO_EXAMPLES.md](../../hologram-sdk/rust/hologram-onnx-compiler/tests/onnx_single_node/MACRO_EXAMPLES.md)
+
+These macros significantly improve the developer experience when adding new ONNX operators to hologramapp. The implemented macros are production-ready and actively used in the codebase.
+
+---
+
+## Conclusion
+
+This specification provides comprehensive guidance for implementing and testing ONNX operators in hologramapp. Key takeaways:
+
+### Two-Level Testing is Essential
+
+- **Single-node tests** verify operator logic in isolation
+- **Two-node composition tests** verify operators can interoperate
+- Both levels are necessary for production-quality operator implementations
+
+### Adding Operators is Systematic
+
+Follow the five-step workflow:
+
+1. Create Atlas schema
+2. Implement HRM execution
+3. Write single-node tests
+4. Add to composition matrix
+5. Validate
+
+### Prioritize Based on Impact
+
+Use the priority roadmap to implement operators that unlock the most value:
+
+- Tier 1: Softmax, BatchNorm, Conv, MaxPool, Transpose (enables common models)
+- Tier 2: Advanced activations, comparisons, reductions (expands coverage)
+- Tier 3: RNN/LSTM, quantization, specialized ops (advanced use cases)
+
+### Test Coverage Scales Automatically
+
+When adding operator N+1:
+
+- Write 4 single-node tests
+- Automatically get 2N composition tests
+- Total new tests: 4 + 2N
+
+### Current Status: 8% → 100% Roadmap
+
+- **Current: 23 operators (8%), 110 tests passing**
+- Phase 1: 37 operators (13%) - Complete all schema-backed operators
+- Phase 2: 52 operators (18%) - Tier 2 medium-priority operators
+- Phase 3: 72 operators (26%) - Advanced math and pooling operations
+- Phase 4: 100 operators (35%) - RNN/LSTM, vision operations
+- Phase 5: 150+ operators (53%+) - Quantization, sequence ops
+- Long-term: 282 operators (100%) - Full ONNX specification coverage
+
+For questions or clarifications, refer to the complete workflow and examples in this specification.
+
+---
+
+**Document Version:** 1.0
+**Last Updated:** 2025-01-17
+**Status:** Active
+**Owner:** Hologramapp ONNX Team

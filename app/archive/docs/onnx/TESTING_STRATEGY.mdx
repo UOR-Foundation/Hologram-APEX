@@ -1,0 +1,892 @@
+---
+title: "Hologram ONNX Testing Strategy"
+description: "Hologram ONNX Testing Strategy documentation"
+---
+
+# Hologram ONNX Testing Strategy
+
+**Goal**: Ensure correctness, performance, and reliability of the ONNX runtime
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Testing Levels](#testing-levels)
+- [Unit Testing](#unit-testing)
+- [Integration Testing](#integration-testing)
+- [Operator Testing](#operator-testing)
+- [Model Testing](#model-testing)
+- [Performance Testing](#performance-testing)
+- [Validation Against Reference](#validation-against-reference)
+- [Continuous Integration](#continuous-integration)
+
+---
+
+## Overview
+
+### Testing Philosophy
+
+1. **Comprehensive Coverage**: Test all code paths
+2. **Reference Validation**: Compare against ONNX Runtime
+3. **Numerical Accuracy**: Verify floating-point correctness
+4. **Performance Tracking**: Benchmark every change
+5. **Incremental Testing**: Test as you implement
+
+### Coverage Goals
+
+- **Unit Tests**: 95%+ code coverage
+- **Integration Tests**: All operators, common models
+- **Performance Tests**: Track regression on every commit
+- **Validation Tests**: Match ONNX Runtime outputs
+
+---
+
+## Testing Levels
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Testing Pyramid                      │
+│                                                         │
+│                        /\                               │
+│                       /  \  Model Testing               │
+│                      /    \  (E2E: SD, ResNet)          │
+│                     /      \                            │
+│                    /────────\                           │
+│                   /          \                          │
+│                  / Integration\  Graph Execution        │
+│                 /    Testing   \  Multi-op tests        │
+│                /                \                        │
+│               /──────────────────\                       │
+│              /                    \                      │
+│             /   Operator Testing   \                     │
+│            /   (Each ONNX operator) \                    │
+│           /                          \                   │
+│          /────────────────────────────\                  │
+│         /                              \                 │
+│        /        Unit Testing            \                │
+│       /   (Functions, utilities, IR)    \               │
+│      /                                    \              │
+│     /──────────────────────────────────────\             │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Test Distribution
+
+- **Unit Tests**: 60% of tests
+- **Operator Tests**: 25% of tests
+- **Integration Tests**: 10% of tests
+- **Model Tests**: 5% of tests
+
+---
+
+## Unit Testing
+
+### Module-Level Tests
+
+Each module should have comprehensive unit tests in `#[cfg(test)]` sections.
+
+#### Proto Module Tests
+
+```rust
+// src/proto/parser.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_simple_model() {
+        let bytes = include_bytes!("../../tests/fixtures/add.onnx");
+        let model = parse_model(bytes).unwrap();
+
+        assert_eq!(model.ir_version, 8);
+        assert!(model.graph.is_some());
+    }
+
+    #[test]
+    fn test_parse_invalid_model() {
+        let bytes = b"invalid onnx data";
+        let result = parse_model(bytes);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OnnxError::ParseError(_)));
+    }
+
+    #[test]
+    fn test_validate_version() {
+        let mut model = create_test_model();
+        model.ir_version = 2;  // Too old
+
+        let result = validate_version(&model);
+        assert!(result.is_err());
+    }
+}
+```
+
+#### Graph Module Tests
+
+```rust
+// src/graph/graph.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_graph_from_proto() {
+        let proto = load_test_proto("add.onnx");
+        let graph = Graph::from_proto(proto).unwrap();
+
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.inputs.len(), 2);
+        assert_eq!(graph.outputs.len(), 1);
+    }
+
+    #[test]
+    fn test_get_producer() {
+        let graph = create_test_graph();
+        let producer = graph.get_producer("intermediate_value").unwrap();
+
+        assert_eq!(producer.op_type, "Add");
+    }
+
+    #[test]
+    fn test_get_consumers() {
+        let graph = create_test_graph();
+        let consumers = graph.get_consumers("intermediate_value");
+
+        assert_eq!(consumers.len(), 2);
+    }
+}
+```
+
+#### Topological Sort Tests
+
+```rust
+// src/graph/analysis.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_topological_sort_linear() {
+        // A → B → C
+        let graph = create_linear_graph();
+        let order = topological_sort(&graph).unwrap();
+
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn test_topological_sort_branching() {
+        // A → B → D
+        // A → C → D
+        let graph = create_branching_graph();
+        let order = topological_sort(&graph).unwrap();
+
+        assert_eq!(order[0], 0);  // A must be first
+        assert_eq!(order[3], 3);  // D must be last
+    }
+
+    #[test]
+    fn test_topological_sort_cycle_detection() {
+        // A → B → C → A (cycle)
+        let graph = create_cyclic_graph();
+        let result = topological_sort(&graph);
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OnnxError::InvalidGraph(_)));
+    }
+
+    #[test]
+    fn test_lifetime_analysis() {
+        let graph = create_test_graph();
+        let order = vec![0, 1, 2, 3];
+        let lifetimes = analyze_lifetimes(&graph, &order);
+
+        // "input" used at nodes 0 and 1
+        assert_eq!(lifetimes["input"].first_use, 0);
+        assert_eq!(lifetimes["input"].last_use, 1);
+
+        // "intermediate" created at node 1, used at node 2
+        assert_eq!(lifetimes["intermediate"].first_use, 1);
+        assert_eq!(lifetimes["intermediate"].last_use, 2);
+    }
+}
+```
+
+### Type System Tests
+
+```rust
+// src/types/dtype.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_datatype_from_proto() {
+        assert_eq!(DataType::from_proto(1).unwrap(), DataType::Float32);
+        assert_eq!(DataType::from_proto(10).unwrap(), DataType::Float16);
+        assert_eq!(DataType::from_proto(3).unwrap(), DataType::Int8);
+    }
+
+    #[test]
+    fn test_datatype_size() {
+        assert_eq!(DataType::Float32.size(), 4);
+        assert_eq!(DataType::Float16.size(), 2);
+        assert_eq!(DataType::Int8.size(), 1);
+    }
+
+    #[test]
+    fn test_unsupported_type() {
+        let result = DataType::from_proto(999);
+        assert!(result.is_err());
+    }
+}
+```
+
+---
+
+## Integration Testing
+
+### Graph Execution Tests
+
+```rust
+// tests/integration_test.rs
+use hologram_onnx::{OnnxModel, OnnxExecutor};
+use hologram_core::Executor;
+
+#[test]
+fn test_simple_addition_graph() -> anyhow::Result<()> {
+    // Load model
+    let model = OnnxModel::load("tests/fixtures/add.onnx")?;
+
+    // Create executor
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    // Create inputs
+    let a = create_tensor(&[1.0, 2.0, 3.0], &[3]);
+    let b = create_tensor(&[4.0, 5.0, 6.0], &[3]);
+
+    let inputs = HashMap::from([
+        ("a".to_string(), a),
+        ("b".to_string(), b),
+    ]);
+
+    // Execute
+    let outputs = onnx_exec.run(inputs)?;
+
+    // Verify output
+    let result = outputs.get("output").unwrap();
+    assert_eq!(result.to_vec()?, vec![5.0, 7.0, 9.0]);
+
+    Ok(())
+}
+
+#[test]
+fn test_multi_node_graph() -> anyhow::Result<()> {
+    // Graph: (a + b) * c
+    let model = OnnxModel::load("tests/fixtures/add_mul.onnx")?;
+
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    let inputs = HashMap::from([
+        ("a".to_string(), create_tensor(&[1.0, 2.0], &[2])),
+        ("b".to_string(), create_tensor(&[3.0, 4.0], &[2])),
+        ("c".to_string(), create_tensor(&[2.0, 2.0], &[2])),
+    ]);
+
+    let outputs = onnx_exec.run(inputs)?;
+    let result = outputs.get("output").unwrap();
+
+    // (1+3)*2=8, (2+4)*2=12
+    assert_eq!(result.to_vec()?, vec![8.0, 12.0]);
+
+    Ok(())
+}
+
+#[test]
+fn test_branching_graph() -> anyhow::Result<()> {
+    // Graph:
+    //   a → add → output1
+    //   b ↗
+    //   a → mul → output2
+    //   b ↗
+    let model = OnnxModel::load("tests/fixtures/branching.onnx")?;
+
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    let inputs = HashMap::from([
+        ("a".to_string(), create_tensor(&[2.0], &[1])),
+        ("b".to_string(), create_tensor(&[3.0], &[1])),
+    ]);
+
+    let outputs = onnx_exec.run(inputs)?;
+
+    assert_eq!(outputs["output1"].to_vec()?, vec![5.0]);  // 2+3
+    assert_eq!(outputs["output2"].to_vec()?, vec![6.0]);  // 2*3
+
+    Ok(())
+}
+```
+
+### Optimization Pass Tests
+
+```rust
+// tests/optimization_test.rs
+use hologram_onnx::optimizer::*;
+
+#[test]
+fn test_constant_folding() -> anyhow::Result<()> {
+    let mut graph = create_graph_with_constants();
+    let pass = ConstantFoldingPass;
+
+    let modified = pass.run(&mut graph)?;
+
+    assert!(modified);
+    assert_eq!(graph.nodes.len(), 2);  // Constant nodes removed
+    assert!(graph.initializers.contains_key("folded_result"));
+
+    Ok(())
+}
+
+#[test]
+fn test_dead_code_elimination() -> anyhow::Result<()> {
+    let mut graph = create_graph_with_dead_code();
+    let pass = DeadCodeEliminationPass;
+
+    let modified = pass.run(&mut graph)?;
+
+    assert!(modified);
+    assert_eq!(graph.nodes.len(), 3);  // Dead nodes removed
+
+    Ok(())
+}
+
+#[test]
+fn test_operator_fusion() -> anyhow::Result<()> {
+    let mut graph = create_conv_bn_relu_graph();
+    let pass = OperatorFusionPass;
+
+    let modified = pass.run(&mut graph)?;
+
+    assert!(modified);
+    // Conv, BatchNorm, Relu → FusedConvBnRelu
+    assert_eq!(graph.nodes.len(), 1);
+    assert_eq!(graph.nodes[0].op_type, "FusedConvBnRelu");
+
+    Ok(())
+}
+```
+
+---
+
+## Operator Testing
+
+### Test Template for Each Operator
+
+```rust
+// tests/operators/test_add.rs
+use hologram_onnx::ops::math::AddOp;
+use hologram_onnx::ops::OnnxOperator;
+
+#[test]
+fn test_add_basic() {
+    let exec = Executor::new().unwrap();
+    let op = AddOp;
+
+    let a = create_tensor(&exec, &[1.0, 2.0, 3.0], &[3]);
+    let b = create_tensor(&exec, &[4.0, 5.0, 6.0], &[3]);
+
+    let result = op.execute(&exec, &[&a, &b], &HashMap::new()).unwrap();
+
+    assert_eq!(result[0].to_vec(), vec![5.0, 7.0, 9.0]);
+}
+
+#[test]
+fn test_add_broadcasting() {
+    let exec = Executor::new().unwrap();
+    let op = AddOp;
+
+    let a = create_tensor(&exec, &[1.0, 2.0, 3.0], &[3]);
+    let b = create_tensor(&exec, &[10.0], &[1]);  // Broadcast
+
+    let result = op.execute(&exec, &[&a, &b], &HashMap::new()).unwrap();
+
+    assert_eq!(result[0].to_vec(), vec![11.0, 12.0, 13.0]);
+}
+
+#[test]
+fn test_add_multidimensional() {
+    let exec = Executor::new().unwrap();
+    let op = AddOp;
+
+    // [2, 3] + [2, 3]
+    let a = create_tensor(&exec, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[2, 3]);
+    let b = create_tensor(&exec, &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0], &[2, 3]);
+
+    let result = op.execute(&exec, &[&a, &b], &HashMap::new()).unwrap();
+
+    assert_eq!(result[0].shape(), &[2, 3]);
+    assert_eq!(result[0].to_vec(), vec![11.0, 22.0, 33.0, 44.0, 55.0, 66.0]);
+}
+
+#[test]
+fn test_add_shape_inference() {
+    let op = AddOp;
+
+    let input_shapes = vec![&[2, 3][..], &[2, 3][..]];
+    let output_shapes = op.infer_shapes(&input_shapes, &HashMap::new()).unwrap();
+
+    assert_eq!(output_shapes, vec![vec![2, 3]]);
+}
+
+#[test]
+fn test_add_broadcasting_shape_inference() {
+    let op = AddOp;
+
+    let input_shapes = vec![&[2, 3][..], &[1][..]];
+    let output_shapes = op.infer_shapes(&input_shapes, &HashMap::new()).unwrap();
+
+    assert_eq!(output_shapes, vec![vec![2, 3]]);
+}
+```
+
+### Numerical Accuracy Tests
+
+```rust
+#[test]
+fn test_add_numerical_accuracy() {
+    let exec = Executor::new().unwrap();
+    let op = AddOp;
+
+    // Generate random inputs
+    let a = random_tensor(&exec, &[100], -10.0, 10.0);
+    let b = random_tensor(&exec, &[100], -10.0, 10.0);
+
+    // Compute with hologram
+    let result = op.execute(&exec, &[&a, &b], &HashMap::new()).unwrap();
+
+    // Compute reference (NumPy-style)
+    let expected: Vec<f32> = a.to_vec().iter()
+        .zip(b.to_vec().iter())
+        .map(|(x, y)| x + y)
+        .collect();
+
+    // Compare with tolerance
+    assert_vec_close(&result[0].to_vec(), &expected, 1e-6);
+}
+
+fn assert_vec_close(actual: &[f32], expected: &[f32], tolerance: f32) {
+    assert_eq!(actual.len(), expected.len());
+
+    for (i, (&a, &e)) in actual.iter().zip(expected.iter()).enumerate() {
+        let diff = (a - e).abs();
+        assert!(
+            diff < tolerance,
+            "Mismatch at index {}: {} vs {} (diff: {})",
+            i, a, e, diff
+        );
+    }
+}
+```
+
+### Property-Based Testing
+
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn test_add_commutative(
+        a in prop::collection::vec(prop::num::f32::NORMAL, 1..100),
+        b in prop::collection::vec(prop::num::f32::NORMAL, 1..100),
+    ) {
+        let exec = Executor::new().unwrap();
+        let op = AddOp;
+
+        let shape = vec![a.len()];
+        let tensor_a = create_tensor(&exec, &a, &shape);
+        let tensor_b = create_tensor(&exec, &b, &shape);
+
+        // a + b
+        let result1 = op.execute(&exec, &[&tensor_a, &tensor_b], &HashMap::new()).unwrap();
+
+        // b + a (commutative)
+        let result2 = op.execute(&exec, &[&tensor_b, &tensor_a], &HashMap::new()).unwrap();
+
+        // Should be equal (within floating-point tolerance)
+        assert_vec_close(&result1[0].to_vec(), &result2[0].to_vec(), 1e-6);
+    }
+
+    #[test]
+    fn test_add_associative(
+        a in prop::collection::vec(prop::num::f32::NORMAL, 1..100),
+        b in prop::collection::vec(prop::num::f32::NORMAL, 1..100),
+        c in prop::collection::vec(prop::num::f32::NORMAL, 1..100),
+    ) {
+        let exec = Executor::new().unwrap();
+        let op = AddOp;
+
+        let shape = vec![a.len()];
+        let tensor_a = create_tensor(&exec, &a, &shape);
+        let tensor_b = create_tensor(&exec, &b, &shape);
+        let tensor_c = create_tensor(&exec, &c, &shape);
+
+        // (a + b) + c
+        let ab = op.execute(&exec, &[&tensor_a, &tensor_b], &HashMap::new()).unwrap();
+        let result1 = op.execute(&exec, &[&ab[0], &tensor_c], &HashMap::new()).unwrap();
+
+        // a + (b + c)
+        let bc = op.execute(&exec, &[&tensor_b, &tensor_c], &HashMap::new()).unwrap();
+        let result2 = op.execute(&exec, &[&tensor_a, &bc[0]], &HashMap::new()).unwrap();
+
+        assert_vec_close(&result1[0].to_vec(), &result2[0].to_vec(), 1e-5);
+    }
+}
+```
+
+---
+
+## Model Testing
+
+### Small Test Models
+
+```rust
+// tests/models/test_simple_models.rs
+
+#[test]
+fn test_linear_model() -> anyhow::Result<()> {
+    // y = W*x + b
+    let model = OnnxModel::load("tests/fixtures/models/linear.onnx")?;
+
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    let x = create_tensor(&[1.0, 2.0, 3.0], &[1, 3]);
+    let outputs = onnx_exec.run(HashMap::from([("x".into(), x)]))?;
+
+    let y = outputs.get("y").unwrap();
+    assert_eq!(y.shape(), &[1, 2]);
+
+    Ok(())
+}
+
+#[test]
+fn test_conv_model() -> anyhow::Result<()> {
+    // Simple CNN: Conv2d → ReLU → MaxPool
+    let model = OnnxModel::load("tests/fixtures/models/simple_cnn.onnx")?;
+
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    let input = random_tensor(&[1, 3, 32, 32]);
+    let outputs = onnx_exec.run(HashMap::from([("input".into(), input)]))?;
+
+    let output = outputs.get("output").unwrap();
+    assert_eq!(output.shape(), &[1, 16, 14, 14]);
+
+    Ok(())
+}
+```
+
+### Full Model Tests (SD, ResNet)
+
+```rust
+// tests/models/test_stable_diffusion.rs
+
+#[test]
+#[ignore]  // Expensive test, run manually
+fn test_stable_diffusion_unet() -> anyhow::Result<()> {
+    let model = OnnxModel::load("tests/fixtures/models/unet.onnx")?;
+
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    // Create inputs
+    let latent = random_tensor(&[1, 4, 64, 64]);
+    let timestep = create_tensor(&[1.0], &[1]);
+    let context = random_tensor(&[1, 77, 768]);
+
+    let inputs = HashMap::from([
+        ("sample".into(), latent),
+        ("timestep".into(), timestep),
+        ("encoder_hidden_states".into(), context),
+    ]);
+
+    // Run inference
+    let start = Instant::now();
+    let outputs = onnx_exec.run(inputs)?;
+    let elapsed = start.elapsed();
+
+    println!("U-Net inference: {:?}", elapsed);
+    assert!(elapsed < Duration::from_secs(2));  // Performance check
+
+    let noise_pred = outputs.get("noise_pred").unwrap();
+    assert_eq!(noise_pred.shape(), &[1, 4, 64, 64]);
+
+    Ok(())
+}
+
+#[test]
+#[ignore]
+fn test_resnet50() -> anyhow::Result<()> {
+    let model = OnnxModel::load("tests/fixtures/models/resnet50.onnx")?;
+
+    let exec = Executor::new()?;
+    let mut onnx_exec = model.create_executor(exec)?;
+
+    let input = random_tensor(&[1, 3, 224, 224]);
+    let outputs = onnx_exec.run(HashMap::from([("input".into(), input)]))?;
+
+    let logits = outputs.get("output").unwrap();
+    assert_eq!(logits.shape(), &[1, 1000]);  // ImageNet classes
+
+    Ok(())
+}
+```
+
+---
+
+## Performance Testing
+
+### Benchmark Suite
+
+```rust
+// benches/inference.rs
+use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+
+fn benchmark_operators(c: &mut Criterion) {
+    let mut group = c.benchmark_group("operators");
+
+    for size in [100, 1000, 10000, 100000].iter() {
+        group.bench_with_input(BenchmarkId::new("add", size), size, |b, &size| {
+            let exec = Executor::new().unwrap();
+            let op = AddOp;
+            let a = random_tensor(&exec, &[size]);
+            let b = random_tensor(&exec, &[size]);
+
+            b.iter(|| {
+                op.execute(&exec, &[&a, &b], &HashMap::new()).unwrap();
+            });
+        });
+    }
+
+    group.finish();
+}
+
+fn benchmark_models(c: &mut Criterion) {
+    let mut group = c.benchmark_group("models");
+
+    group.bench_function("unet_single_step", |b| {
+        let model = OnnxModel::load("models/unet.onnx").unwrap();
+        let exec = Executor::new().unwrap();
+        let mut onnx_exec = model.create_executor(exec).unwrap();
+
+        let inputs = create_unet_inputs();
+
+        b.iter(|| {
+            onnx_exec.run(inputs.clone()).unwrap();
+        });
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, benchmark_operators, benchmark_models);
+criterion_main!(benches);
+```
+
+### Performance Regression Testing
+
+```bash
+# Run benchmarks before change
+cargo bench --bench inference -- --save-baseline before
+
+# Make changes...
+
+# Run benchmarks after change
+cargo bench --bench inference -- --baseline before
+
+# View results
+open target/criterion/report/index.html
+```
+
+---
+
+## Validation Against Reference
+
+### Compare with ONNX Runtime
+
+```rust
+// tests/validation/test_against_onnxruntime.rs
+
+#[test]
+#[ignore]  // Requires onnxruntime installation
+fn test_add_matches_onnxruntime() -> anyhow::Result<()> {
+    use onnxruntime::{environment::Environment, session::Session};
+
+    let model_path = "tests/fixtures/add.onnx";
+
+    // Run with hologram
+    let hologram_output = {
+        let model = OnnxModel::load(model_path)?;
+        let exec = Executor::new()?;
+        let mut onnx_exec = model.create_executor(exec)?;
+
+        let inputs = create_test_inputs();
+        let outputs = onnx_exec.run(inputs)?;
+        outputs.get("output").unwrap().to_vec()?
+    };
+
+    // Run with ONNX Runtime
+    let onnxruntime_output = {
+        let env = Environment::builder().build()?;
+        let session = env.new_session_builder()?.with_model_from_file(model_path)?;
+
+        let inputs = create_onnxruntime_inputs();
+        let outputs = session.run(inputs)?;
+        outputs[0].extract_tensor::<f32>()?.to_vec()
+    };
+
+    // Compare outputs
+    assert_vec_close(&hologram_output, &onnxruntime_output, 1e-5);
+
+    Ok(())
+}
+```
+
+### Numerical Tolerance
+
+Different operations have different acceptable tolerances:
+
+| Operation | Tolerance | Reason |
+|-----------|-----------|--------|
+| Add, Sub, Mul | 1e-7 | Exact for most values |
+| Div | 1e-6 | Rounding errors |
+| Sqrt, Pow | 1e-6 | Approximation algorithms |
+| Exp, Log | 1e-5 | Taylor series approximation |
+| Softmax | 1e-5 | Multiple exp operations |
+| LayerNorm | 1e-4 | Variance computation |
+| Attention | 1e-4 | Softmax + matmul chain |
+
+---
+
+## Continuous Integration
+
+### GitHub Actions Workflow
+
+```yaml
+# .github/workflows/onnx-tests.yml
+name: ONNX Runtime Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build
+        run: cargo build --workspace --all-targets
+
+      - name: Run unit tests
+        run: cargo test --workspace
+
+      - name: Run integration tests
+        run: cargo test --workspace --test '*'
+
+      - name: Run operator tests
+        run: cargo test --package hologram-onnx --lib ops
+
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run benchmarks
+        run: cargo bench --bench inference -- --save-baseline ci
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmarks
+          path: target/criterion
+```
+
+### Pre-commit Hook
+
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit
+
+echo "Running pre-commit checks..."
+
+# Format code
+cargo fmt --all
+
+# Run clippy
+cargo clippy --workspace -- -D warnings || exit 1
+
+# Run tests
+cargo test --workspace || exit 1
+
+echo "Pre-commit checks passed!"
+```
+
+---
+
+## Testing Checklist
+
+### For Each Operator
+
+- [ ] Basic functionality test
+- [ ] Broadcasting test (if applicable)
+- [ ] Multi-dimensional test
+- [ ] Shape inference test
+- [ ] Type inference test
+- [ ] Numerical accuracy test vs reference
+- [ ] Edge cases (empty tensors, size-1 dimensions)
+- [ ] Property-based tests (if applicable)
+
+### For Each Feature
+
+- [ ] Unit tests for internal functions
+- [ ] Integration test with simple model
+- [ ] Performance benchmark
+- [ ] Documentation with examples
+- [ ] Error handling tests
+
+### Before Release
+
+- [ ] All tests pass (`cargo test --workspace`)
+- [ ] Zero compiler warnings (`cargo clippy --workspace -- -D warnings`)
+- [ ] Code formatted (`cargo fmt --check`)
+- [ ] Benchmarks run without regression
+- [ ] Documentation up to date
+- [ ] Examples work
+- [ ] Model zoo tests pass (SD, ResNet, etc.)
+
+---
+
+This comprehensive testing strategy ensures the hologram ONNX runtime is correct, performant, and reliable. Following these guidelines will catch bugs early and maintain code quality throughout development.

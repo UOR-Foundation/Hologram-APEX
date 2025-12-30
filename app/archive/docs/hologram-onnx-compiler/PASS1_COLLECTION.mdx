@@ -1,0 +1,359 @@
+---
+title: "Pass 1: Collection & Analysis"
+description: "Pass 1: Collection & Analysis documentation"
+---
+
+# Pass 1: Collection & Analysis
+
+**Status**: ✅ Complete
+**Implementation**: `/workspace/hologram-sdk/rust/hologram-onnx-compiler/src/hrm/pass1_collector.rs`
+**Lines of Code**: 415
+
+## Overview
+
+Pass 1 is the first phase of the MoonshineHRM compilation pipeline. It analyzes the ONNX model to:
+1. Extract and deduplicate weight values
+2. Compute operation statistics
+3. Generate discretization strategies
+4. Calculate optimal pattern counts
+5. Estimate resource requirements
+
+## Key Features
+
+### 1. **Value Deduplication** (Value Reuse Optimization)
+
+The most important optimization in Pass 1:
+- Scans all weights across the entire model
+- Identifies unique float32 values
+- Builds occurrence count map
+
+**Example**: A ResNet-50 with 25M parameters might have only 100K unique values (250x reduction!)
+
+### 2. **Operation Statistics**
+
+For each ONNX node, computes:
+- Input/output tensor sizes
+- Weight parameter counts
+- Unique weight value counts
+- Estimated compute time
+- Estimated patterns needed for accuracy
+
+### 3. **Discretization Strategy Selection**
+
+Per-operation type:
+- **MatMul/Gemm** → INT8 quantization (or k-means if training data provided)
+- **Conv** → INT8 quantization (spatial locality)
+- **Element-wise** → Hash buckets (simple patterns)
+
+### 4. **Pattern Count Optimization**
+
+Balances three constraints:
+```rust
+num_patterns = min(
+    max_by_memory,  // Memory budget ÷ result_size
+    max_by_time,    // Time budget ÷ compute_time
+).max(min_for_accuracy)  // Must meet accuracy target
+```
+
+### 5. **Operation→Value Mapping**
+
+Builds efficient index mapping:
+- `HashMap<operation_id, Vec<value_index>>`
+- Enables fast lookup in Pass 2/3
+- Reuses value indices across operations
+
+## Algorithm
+
+```rust
+fn collect_and_analyze(onnx_bytes, training_data) -> CollectionManifest {
+    // 1. Parse ONNX protobuf
+    let invariant = extract_invariant_structure(onnx_bytes)?;
+
+    // 2. Collect unique weight values (deduplication!)
+    for (name, weight_bytes) in invariant.initializers {
+        for value in parse_f32(weight_bytes) {
+            if value.is_finite() {
+                unique_values.insert(value);
+                value_counts[value] += 1;
+            }
+        }
+    }
+
+    // 3. Analyze operations
+    for node in invariant.nodes {
+        let stats = OperationStats {
+            input_size,
+            output_size,
+            num_weights,
+            num_unique_weights,
+            avg_compute_time_ms,
+            estimated_patterns_for_accuracy,
+        };
+    }
+
+    // 4. Generate discretization strategies
+    for node in invariant.nodes {
+        let strategy = match node.op_type {
+            "MatMul" | "Gemm" => Quantized(INT8),
+            "Conv" => Quantized(INT8),
+            _ => HashedBuckets(1024),
+        };
+    }
+
+    // 5. Calculate optimal pattern counts
+    for stats in operation_stats {
+        let num_patterns = optimize_pattern_count(
+            stats,
+            memory_budget,
+            accuracy_target,
+            time_budget,
+        );
+    }
+
+    // 6. Build operation→value mapping
+    for (op_id, node) in invariant.nodes {
+        for input in node.inputs {
+            if is_weight(input) {
+                map[op_id].push(value_to_index[weight_values]);
+            }
+        }
+    }
+
+    // 7. Estimate resources
+    total_memory = patterns.sum() * avg_result_size;
+    compile_time = total_patterns / 1000; // 1ms per pattern
+
+    CollectionManifest {
+        unique_values,
+        operation_value_map,
+        operation_stats,
+        patterns_per_operation,
+        total_memory_needed,
+        estimated_compilation_time,
+        discretization_strategies,
+    }
+}
+```
+
+## Data Structures
+
+### CollectionManifest
+
+Output of Pass 1:
+```rust
+pub struct CollectionManifest {
+    /// All unique float values (deduped)
+    pub unique_values: Vec<f32>,
+
+    /// operation_id → value_indices
+    pub operation_value_map: HashMap<usize, Vec<usize>>,
+
+    /// Per-operation statistics
+    pub operation_stats: Vec<OperationStats>,
+
+    /// Optimal pattern count per operation
+    pub patterns_per_operation: Vec<usize>,
+
+    /// Total memory needed (bytes)
+    pub total_memory_needed: usize,
+
+    /// Estimated compilation time
+    pub estimated_compilation_time: Duration,
+
+    /// Discretization strategy per operation
+    pub discretization_strategies: Vec<DiscretizationStrategy>,
+}
+```
+
+### OperationStats
+
+Per-operation analysis:
+```rust
+pub struct OperationStats {
+    pub op_type: String,
+    pub op_id: usize,
+    pub input_shapes: Vec<Vec<i64>>,
+    pub output_shapes: Vec<Vec<i64>>,
+    pub num_weights: usize,
+    pub num_unique_weights: usize,
+    pub input_size: usize,
+    pub output_size: usize,
+    pub avg_compute_time_ms: u64,
+    pub estimated_patterns_for_accuracy: usize,
+}
+```
+
+## Usage
+
+```rust
+use hologram_onnx_compiler::hrm::Pass1Collector;
+
+// Create collector with configuration
+let mut collector = Pass1Collector::new()
+    .with_memory_budget(10 * 1024 * 1024 * 1024)  // 10GB
+    .with_accuracy_target(0.99)                     // 99%
+    .with_time_budget(86400)                        // 24 hours
+    .with_verbose(true);
+
+// Load ONNX model
+let onnx_bytes = std::fs::read("model.onnx")?;
+
+// Run Pass 1
+let manifest = collector.collect_and_analyze(&onnx_bytes, None)?;
+
+// Inspect results
+println!("Unique values: {}", manifest.unique_values.len());
+println!("Operations: {}", manifest.operation_stats.len());
+println!("Total patterns: {}", manifest.patterns_per_operation.iter().sum::<usize>());
+println!("Memory needed: {} MB", manifest.total_memory_needed / (1024 * 1024));
+println!("Estimated time: {:?}", manifest.estimated_compilation_time);
+```
+
+## Configuration
+
+### Memory Budget
+
+Controls maximum address space size:
+```rust
+.with_memory_budget(10 * 1024 * 1024 * 1024)  // 10GB
+```
+
+Larger budget = more patterns = better accuracy
+
+### Accuracy Target
+
+Controls minimum pattern count:
+```rust
+.with_accuracy_target(0.99)  // 99% accuracy
+```
+
+Higher accuracy = more patterns = longer compilation
+
+### Time Budget
+
+Controls maximum compilation time:
+```rust
+.with_time_budget(86400)  // 24 hours
+```
+
+Longer budget = more patterns = better accuracy
+
+## Output
+
+### Console (Verbose Mode)
+
+```
+Pass 1: Starting collection and analysis
+Extracted 52 nodes from ONNX model
+Found 127,849 unique weight values
+Calculated pattern counts: total 1,547,392 patterns
+Pass 1 complete:
+  - Unique values: 127,849
+  - Operations: 52
+  - Total memory needed: 6,189 MB
+  - Estimated compilation time: 25m 47s
+```
+
+### CollectionManifest
+
+- **unique_values**: `Vec<f32>` with 127,849 entries
+- **operation_value_map**: Maps 52 operations to value indices
+- **operation_stats**: 52 entries with detailed statistics
+- **patterns_per_operation**: `[1000, 5000, 10000, ...]` (52 entries)
+- **total_memory_needed**: 6,189 MB
+- **estimated_compilation_time**: 25m 47s
+
+## Performance
+
+### Typical Execution Time
+
+| Model Size | Nodes | Unique Values | Time |
+|------------|-------|---------------|------|
+| Small (ResNet-18) | ~70 | ~100K | 1-2s |
+| Medium (ResNet-50) | ~180 | ~500K | 3-5s |
+| Large (GPT-2) | ~300 | ~2M | 10-15s |
+
+### Memory Usage
+
+Pass 1 is very lightweight:
+- HashSet for unique values: ~1MB per 100K values
+- Operation stats: ~1KB per node
+- Total: <100MB for largest models
+
+## Implementation Details
+
+### Float Parsing
+
+Weights are stored as little-endian bytes:
+```rust
+let value = f32::from_le_bytes([
+    weight_bytes[offset],
+    weight_bytes[offset + 1],
+    weight_bytes[offset + 2],
+    weight_bytes[offset + 3],
+]);
+```
+
+### NaN/Infinity Filtering
+
+```rust
+if !value.is_finite() {
+    continue;  // Skip NaN and ±∞
+}
+```
+
+### Value Ordering
+
+Uses `OrderedFloat` for HashMap keys:
+```rust
+use ordered_float::OrderedFloat;
+
+let ordered = OrderedFloat(value);
+unique_values.insert(ordered);
+value_counts.entry(ordered).or_insert(0) += 1;
+```
+
+## Testing
+
+### Unit Tests
+
+```rust
+#[test]
+fn test_value_deduplication() {
+    let mut collector = Pass1Collector::new();
+    // Test that duplicate values are deduplicated
+}
+
+#[test]
+fn test_pattern_count_optimization() {
+    let stats = OperationStats { ... };
+    let count = collector.optimize_pattern_count(&stats);
+    // Verify constraints are satisfied
+}
+```
+
+### Integration Tests
+
+```rust
+#[test]
+fn test_resnet18_analysis() {
+    let onnx_bytes = load_test_model("resnet18.onnx");
+    let manifest = collector.collect_and_analyze(&onnx_bytes, None)?;
+
+    assert!(manifest.unique_values.len() < 200_000);
+    assert_eq!(manifest.operation_stats.len(), 70);
+}
+```
+
+## Next Steps
+
+After Pass 1 completes:
+1. **Pass 2**: Embed `manifest.unique_values` using MoonshineHRM Atlas
+2. **Pass 3**: Pre-compute results for all patterns
+3. **Pass 4**: Serialize to binary format
+
+## References
+
+- **Implementation**: `src/hrm/pass1_collector.rs`
+- **Types**: `src/hrm/types.rs`
+- **ONNX Parsing**: `src/invariant_extractor.rs`

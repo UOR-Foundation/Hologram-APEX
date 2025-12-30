@@ -1,0 +1,224 @@
+---
+title: "CLIP Text Encoder Implementation"
+description: "CLIP Text Encoder Implementation documentation"
+---
+
+# CLIP Text Encoder Implementation
+
+## Overview
+
+Implemented a full CLIP-Large text encoder for the SDXS model using hologram-core operations.
+
+## Architecture
+
+**SDXS CLIP-Large Variant:**
+- Hidden size: 1024
+- Number of layers: 23
+- Number of attention heads: 16 (64-dim each)
+- MLP intermediate size: 4096 (4× hidden size)
+- Vocabulary size: 49408
+- Max sequence length: 77 tokens
+
+## Implementation Details
+
+### File Location
+[`/workspace/hologram-sdk/rust/hologram-ai/src/text/encoder.rs`](/workspace/hologram-sdk/rust/hologram-ai/src/text/encoder.rs)
+
+### Key Components
+
+#### 1. Weight Loading
+```rust
+pub fn from_weights<P: AsRef<Path>>(path: P) -> Result<Self>
+```
+
+Loads all weights from safetensors format:
+- Token embeddings: `[49408, 1024]`
+- Position embeddings: `[77, 1024]`
+- 23 transformer layers (each with q/k/v projections, MLP, layer norms)
+- Final layer normalization
+
+**Safetensors Structure:**
+```
+text_model.embeddings.token_embedding.weight
+text_model.embeddings.position_embedding.weight
+text_model.encoder.layers.{0-22}.{layer_norm1,self_attn,layer_norm2,mlp}
+text_model.final_layer_norm.{weight,bias}
+```
+
+#### 2. Token Embedding
+```rust
+fn embed_tokens(&self, exec: &mut Executor, token_ids: &[u32]) -> Result<Vec<f32>>
+```
+
+- Looks up token embeddings from `[49408, 1024]` table
+- Adds positional embeddings `[77, 1024]`
+- Returns: `[77, 1024]` embeddings
+
+#### 3. Transformer Layers (23 layers)
+```rust
+fn apply_transformer_layer(&self, exec: &mut Executor, input: &[f32], layer: &TransformerLayer) -> Result<Vec<f32>>
+```
+
+Each layer performs:
+1. **Layer Norm 1**
+2. **Multi-Head Self-Attention** (16 heads, 64-dim each)
+   - Q, K, V projections: `[1024, 1024]`
+   - Attention scores: `softmax(Q @ K^T / sqrt(64))`
+   - Output: `attention_weights @ V`
+   - Output projection: `[1024, 1024]`
+3. **Residual Connection** (input + attention_output)
+4. **Layer Norm 2**
+5. **MLP (Feed-Forward)**
+   - FC1: `[1024, 4096]` → GELU activation
+   - FC2: `[4096, 1024]`
+6. **Residual Connection** (hidden + mlp_output)
+
+#### 4. Multi-Head Self-Attention
+```rust
+fn self_attention(&self, exec: &mut Executor, input: &[f32], layer: &TransformerLayer) -> Result<Vec<f32>>
+```
+
+- Projects input to Q, K, V using learned weights
+- Splits into 16 attention heads (64-dim each)
+- Computes scaled dot-product attention per head
+- Applies softmax over attention scores
+- Weighted sum of values
+- Concatenates heads and applies output projection
+
+#### 5. MLP (Feed-Forward Network)
+```rust
+fn mlp(&self, exec: &mut Executor, input: &[f32], layer: &TransformerLayer) -> Result<Vec<f32>>
+```
+
+- Linear layer: `[1024, 4096]`
+- **GELU activation using hologram-core**:
+  ```rust
+  hologram_core::ops::activation::gelu(exec, &hidden_buf, &mut activated_buf, n)
+  ```
+- Linear layer: `[4096, 1024]`
+
+#### 6. Layer Normalization
+```rust
+fn layer_norm(&self, exec: &mut Executor, input: &[f32], weight: &[f32], bias: &[f32]) -> Result<Vec<f32>>
+```
+
+- Computes mean and variance per sequence position
+- Normalizes: `(x - mean) / sqrt(variance + eps)`
+- Applies learned scale and bias
+
+#### 7. Linear Transformation
+```rust
+fn linear(&self, input: &[f32], weight: &[f32], bias: &[f32], in_features: usize, out_features: usize) -> Result<Vec<f32>>
+```
+
+- Matrix multiplication: `output = input @ weight^T + bias`
+- Used for all Q/K/V projections and MLP layers
+
+### Hologram-Core Integration
+
+The implementation uses hologram-core operations:
+
+1. **GELU Activation** (in MLP):
+   ```rust
+   hologram_core::ops::activation::gelu(exec, &input_buf, &mut output_buf, n)
+   ```
+
+2. **Buffer Management**:
+   ```rust
+   let mut buf = exec.allocate::<f32>(size)?;
+   buf.copy_from_slice(exec, &data)?;
+   let result = buf.to_vec(exec)?;
+   ```
+
+### Usage Example
+
+```rust
+use hologram_ai::text::ClipTextEncoder;
+use hologram_core::Executor;
+
+let mut exec = Executor::new()?;
+let encoder = ClipTextEncoder::from_weights("/workspace/models/sdxs-512-0.9/text_encoder/model.safetensors")?;
+
+// Token IDs from tokenizer (77 tokens)
+let token_ids = vec![49406, 320, 1125, /* ... */, 49407];
+
+// Encode to embeddings
+let embeddings = encoder.encode(&mut exec, &token_ids)?;
+
+// embeddings is Vec<f32> with length 77 * 1024 = 78848
+```
+
+## Model Weights
+
+**Location**: `/workspace/models/sdxs-512-0.9/text_encoder/model.safetensors`
+
+**Total Parameters**:
+- Token embeddings: 49408 × 1024 = 50,593,792
+- Position embeddings: 77 × 1024 = 78,848
+- Per transformer layer:
+  - Q/K/V projections: 3 × (1024 × 1024) = 3,145,728
+  - Output projection: 1024 × 1024 = 1,048,576
+  - FC1: 1024 × 4096 = 4,194,304
+  - FC2: 4096 × 1024 = 4,194,304
+  - Layer norms: 2 × 1024 × 2 = 4,096
+  - **Per layer total**: ~12.6M parameters
+- 23 layers: ~290M parameters
+- Final layer norm: 2,048
+- **Total**: ~341M parameters
+
+## Testing
+
+Tests are located in [`src/text/encoder.rs`](/workspace/hologram-sdk/rust/hologram-ai/src/text/encoder.rs):
+
+```rust
+#[test]
+fn test_text_encoder_config()
+
+#[test]
+fn test_text_encoder_load_weights()
+
+#[test]
+fn test_text_encoder_encode_with_weights()
+
+#[test]
+fn test_text_encoder_invalid_length()
+```
+
+Tests verify:
+- Configuration constants
+- Weight loading from safetensors
+- Encoding produces correct output shape (77 × 1024)
+- Invalid input length is rejected
+
+## Performance
+
+**Computational Complexity**:
+- Attention per layer: O(L² × d) where L=77, d=1024
+- MLP per layer: O(L × d × 4d)
+- 23 layers total
+
+**Memory**:
+- Weights: ~1.4GB (341M params × 4 bytes)
+- Activations per forward pass: ~79KB (77 × 1024 floats)
+- Attention scores: ~24KB per layer (77 × 77 × 4 bytes)
+
+## Next Steps
+
+1. **U-Net Diffusion Model** - Implement diffusion model with ResNet + attention blocks
+2. **VAE Decoder** - Implement VAE decoder for latent → image conversion
+3. **Integration** - Update SDXS model to use new ClipTextEncoder API
+4. **WASM Bindings** - Export CLIP encoder to WASM for browser use
+5. **Optimization** - Use hologram-core matrix operations for linear layers
+
+## Status
+
+✅ **COMPLETE** - Full CLIP text encoder implementation with weight loading
+
+**Files Modified**:
+- `/workspace/hologram-sdk/rust/hologram-ai/src/text/encoder.rs` - Full implementation
+- `/workspace/hologram-sdk/rust/hologram-ai/src/weights.rs` - Safetensors loader
+- `/workspace/hologram-sdk/rust/hologram-ai/src/lib.rs` - Export weights module
+
+**Remaining Work**:
+- Update SDXS model to use new ClipTextEncoder API (non-generic, returns Vec<f32>)
+- Implement U-Net and VAE to complete the pipeline

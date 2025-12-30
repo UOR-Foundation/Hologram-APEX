@@ -1,0 +1,427 @@
+---
+title: "CompiledOperation Design Specification"
+description: "CompiledOperation Design Specification documentation"
+---
+
+# CompiledOperation Design Specification
+
+**Date**: 2025-11-14
+**Status**: Design Phase
+**Target**: Phase 2.2 Implementation
+
+---
+
+## Overview
+
+CompiledOperation is the core abstraction for MoonshineHRM's compiled system. It replaces ISA-based runtime execution with pre-computed lookup tables stored in memory-mapped .mshr binary files.
+
+---
+
+## Architecture
+
+```text
+[COMPILE TIME]
+Input Patterns → Atlas Embedding → Pre-computation → .mshr Binary
+   (values)        (h₂, d, ℓ)      (96×96 tables)    (mmap-ready)
+
+[RUNTIME]
+Input → Hash (10ns) → Lookup (5ns) → SIMD Load (20ns) → Output
+Total: ~35ns per operation (O(1) guaranteed)
+```
+
+---
+
+## .mshr Binary Format
+
+### File Extension
+`.mshr` - MoonShine HRM binary
+
+### File Structure
+
+```
+┌─────────────────────────────────────┐
+│ Header (64 bytes)                   │  Magic, version, metadata offset
+├─────────────────────────────────────┤
+│ Manifest (JSON, variable size)      │  Operation metadata, input/output info
+├─────────────────────────────────────┤
+│ Hash Table (variable size)          │  Input hash → result index mapping
+├─────────────────────────────────────┤
+│ Result Data (page-aligned)          │  Pre-computed results (f32/f64 arrays)
+└─────────────────────────────────────┘
+```
+
+### Header (64 bytes)
+
+```rust
+#[repr(C)]
+struct MshrHeader {
+    magic: [u8; 8],           // "MSHRFMT\0" (8 bytes)
+    version: u32,             // Format version (currently 1)
+    flags: u32,               // Reserved flags
+    manifest_offset: u64,     // Byte offset to manifest JSON
+    manifest_size: u64,       // Size of manifest in bytes
+    hash_table_offset: u64,   // Byte offset to hash table
+    hash_table_size: u64,     // Size of hash table in bytes
+    result_data_offset: u64,  // Byte offset to result data
+    result_data_size: u64,    // Size of result data in bytes
+}
+```
+
+### Manifest (JSON)
+
+```json
+{
+  "operation": "vector_add",
+  "version": "1.0.0",
+  "input_patterns": 256,
+  "output_size": 256,
+  "data_type": "f32",
+  "hash_function": "fnv1a_64",
+  "compilation_date": "2025-11-14T12:00:00Z",
+  "atlas_version": "1.0.0"
+}
+```
+
+### Hash Table
+
+Perfect hash table mapping input patterns to result indices:
+
+```rust
+struct HashEntry {
+    key_hash: u64,      // FNV-1a hash of input pattern
+    result_index: u32,  // Index into result data array
+    _padding: u32,      // Alignment
+}
+```
+
+### Result Data
+
+Pre-computed results stored as typed arrays:
+- `f32` results: 4-byte aligned
+- `f64` results: 8-byte aligned
+- Page-aligned for optimal mmap performance
+
+---
+
+## Rust API Design
+
+### Core Types
+
+```rust
+/// Compiled operation loaded from .mshr binary
+pub struct CompiledOperation {
+    /// Memory-mapped file handle
+    mmap: memmap2::Mmap,
+
+    /// Parsed header
+    header: MshrHeader,
+
+    /// Parsed manifest
+    manifest: Manifest,
+
+    /// Hash table view (zero-copy)
+    hash_table: &'static [HashEntry],
+
+    /// Result data view (zero-copy)
+    result_data: &'static [u8],
+}
+
+/// Operation manifest metadata
+#[derive(Debug, serde::Deserialize)]
+pub struct Manifest {
+    pub operation: String,
+    pub version: String,
+    pub input_patterns: usize,
+    pub output_size: usize,
+    pub data_type: DataType,
+    pub hash_function: String,
+    pub compilation_date: String,
+    pub atlas_version: String,
+}
+
+/// Supported data types
+#[derive(Debug, serde::Deserialize)]
+pub enum DataType {
+    F32,
+    F64,
+    I32,
+    I64,
+}
+```
+
+### Public API
+
+```rust
+impl CompiledOperation {
+    /// Load a compiled operation from .mshr file
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to .mshr binary file
+    ///
+    /// # Returns
+    ///
+    /// Loaded operation ready for O(1) lookups
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let op = CompiledOperation::load("ops/vector_add.mshr")?;
+    /// ```
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self>;
+
+    /// Execute operation with pre-computed lookup
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Input pattern (slice of values)
+    ///
+    /// # Returns
+    ///
+    /// Pre-computed result from lookup table
+    ///
+    /// # Performance
+    ///
+    /// O(1) - Hash (10ns) + Lookup (5ns) + Load (20ns) = ~35ns total
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let input = &[1.0f32, 2.0, 3.0];
+    /// let result = op.execute_f32(input)?;
+    /// assert_eq!(result.len(), 3);
+    /// ```
+    pub fn execute_f32(&self, input: &[f32]) -> Result<Vec<f32>>;
+
+    /// Execute with f64 inputs
+    pub fn execute_f64(&self, input: &[f64]) -> Result<Vec<f64>>;
+
+    /// Get operation metadata
+    pub fn manifest(&self) -> &Manifest;
+
+    /// Get number of cached input patterns
+    pub fn pattern_count(&self) -> usize;
+
+    /// Check if input pattern exists in cache
+    pub fn has_pattern(&self, input: &[f32]) -> bool;
+}
+```
+
+### Hash Function
+
+```rust
+/// FNV-1a hash for input patterns (fast, good distribution)
+fn hash_input_f32(input: &[f32]) -> u64 {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+
+    let mut hash = FNV_OFFSET_BASIS;
+
+    for &value in input {
+        // Hash the bit pattern of the float
+        let bytes = value.to_bits().to_le_bytes();
+        for byte in bytes {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+    }
+
+    hash
+}
+```
+
+### Lookup Algorithm
+
+```rust
+impl CompiledOperation {
+    fn lookup_result_index(&self, input_hash: u64) -> Option<u32> {
+        // Binary search in sorted hash table (O(log n))
+        // For small tables (<1000 entries), linear scan may be faster
+
+        let idx = self.hash_table.binary_search_by_key(&input_hash, |entry| entry.key_hash);
+
+        match idx {
+            Ok(i) => Some(self.hash_table[i].result_index),
+            Err(_) => None,
+        }
+    }
+}
+```
+
+---
+
+## Usage Examples
+
+### Basic Operation Execution
+
+```rust
+use hologram_core::moonshine::CompiledOperation;
+
+// Load compiled operation
+let add_op = CompiledOperation::load("ops/vector_add.mshr")?;
+
+// Execute with input pattern
+let a = vec![1.0f32, 2.0, 3.0];
+let b = vec![4.0f32, 5.0, 6.0];
+
+// Combine inputs for lookup
+let input = [a.as_slice(), b.as_slice()].concat();
+let result = add_op.execute_f32(&input)?;
+
+assert_eq!(result, vec![5.0, 7.0, 9.0]);
+```
+
+### Executor Integration
+
+```rust
+use hologram_core::{Executor, Buffer};
+use hologram_core::moonshine::CompiledOperation;
+
+let mut exec = Executor::new()?;
+
+// Load operation once at startup
+let add_op = CompiledOperation::load("ops/vector_add.mshr")?;
+
+// Allocate buffers
+let mut a = exec.allocate::<f32>(256)?;
+let mut b = exec.allocate::<f32>(256)?;
+let mut c = exec.allocate::<f32>(256)?;
+
+// Copy data to buffers
+a.copy_from_slice(&exec, &data_a)?;
+b.copy_from_slice(&exec, &data_b)?;
+
+// Read inputs for lookup
+let input_a = a.to_vec(&exec)?;
+let input_b = b.to_vec(&exec)?;
+let input = [input_a.as_slice(), input_b.as_slice()].concat();
+
+// Execute compiled operation (O(1) lookup)
+let result = add_op.execute_f32(&input)?;
+
+// Write result back to buffer
+c.copy_from_slice(&exec, &result)?;
+```
+
+### Operation Loading Directory
+
+```rust
+use hologram_core::moonshine::OperationRegistry;
+
+// Load all operations from directory
+let registry = OperationRegistry::from_directory("target/moonshine/ops")?;
+
+// Get operation by name
+let add = registry.get("vector_add")?;
+let mul = registry.get("vector_mul")?;
+
+// Execute operations
+let result1 = add.execute_f32(&input1)?;
+let result2 = mul.execute_f32(&input2)?;
+```
+
+---
+
+## Performance Characteristics
+
+### Lookup Performance
+
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Hash input | ~10ns | FNV-1a on 256 f32 values |
+| Binary search | ~5ns | Log₂(1000) ≈ 10 comparisons @ 0.5ns each |
+| SIMD load | ~20ns | AVX2 load of result array |
+| **Total** | **~35ns** | **Guaranteed O(1)** |
+
+### Memory Usage
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| Header | 64 bytes | Fixed |
+| Manifest | ~500 bytes | JSON metadata |
+| Hash table | 16 bytes × N | N = number of patterns |
+| Result data | output_size × N × sizeof(T) | Pre-computed results |
+
+**Example**: 1,000 patterns, 256 output f32:
+- Hash table: 16 KB
+- Result data: 1 MB
+- Total: ~1 MB per operation
+
+### Compilation Time
+
+Pre-computing all patterns (one-time cost):
+- Binary op (96×96): ~9,216 patterns → ~30 seconds
+- Unary op (96): ~96 patterns → <1 second
+- Complex op (96³): ~884,736 patterns → ~1 hour
+
+**Trade-off**: Hours of compilation for ~35ns runtime execution
+
+---
+
+## Implementation Plan
+
+### Phase 2.2.1: Design (This Document) ✅
+
+### Phase 2.2.2: Create Module Structure
+- Create `hologram-core/src/moonshine/mod.rs`
+- Define module exports
+- Add feature flag support
+
+### Phase 2.2.3: Implement Binary Format
+- Define `MshrHeader` struct
+- Implement header parsing
+- Add validation functions
+
+### Phase 2.2.4: Implement CompiledOperation
+- Implement `load()` with mmap
+- Add hash table parsing
+- Implement result data access
+
+### Phase 2.2.5: Implement Lookup Logic
+- Add FNV-1a hash function
+- Implement binary search
+- Add result extraction
+
+### Phase 2.2.6: Add Tests
+- Unit tests for hash function
+- Tests for binary format parsing
+- Integration tests with test .mshr files
+- Performance benchmarks
+
+---
+
+## Open Questions
+
+### Q1: Hash Collision Handling
+**Question**: How to handle hash collisions?
+**Answer**: Use perfect hashing (no collisions by construction). Compiler ensures unique hashes.
+
+### Q2: Multi-Input Operations
+**Question**: How to handle operations with 2+ inputs (e.g., add, mul)?
+**Answer**: Concatenate input arrays before hashing: `hash([a, b])`.
+
+### Q3: Dynamic vs Static Patterns
+**Question**: What if runtime input not in pre-computed set?
+**Answer**: Return `PatternNotFound` error. All patterns must be known at compile-time.
+
+### Q4: Versioning
+**Question**: How to handle .mshr format changes?
+**Answer**: Version field in header. Reject incompatible versions at load time.
+
+---
+
+## Success Criteria
+
+Phase 2.2 is complete when:
+- [x] Design document created
+- [ ] moonshine module structure exists
+- [ ] .mshr binary format implemented
+- [ ] CompiledOperation loads and parses files
+- [ ] O(1) hash lookup working
+- [ ] All tests pass
+- [ ] Performance benchmarks show <50ns execution
+
+---
+
+**Design Complete**: 2025-11-14
+**Next**: Phase 2.2.2 - Create Module Structure

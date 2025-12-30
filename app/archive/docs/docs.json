@@ -1,0 +1,179 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Hologramapp",
+  "theme": "mint",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373"
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/yourusername/hologramapp"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "/"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "index"
+        ]
+      },
+      {
+        "group": "Core Architecture",
+        "pages": [
+          "architecture/BACKEND_ARCHITECTURE",
+          "architecture/BACKEND_TRAIT_ARCHITECTURE",
+          "architecture/PRIMORIAL_GEOMETRY",
+          "architecture/HIERARCHICAL_FACTORIZATION"
+        ]
+      },
+      {
+        "group": "Memory & Performance",
+        "pages": [
+          "memory/README",
+          "memory/ARCHITECTURE",
+          "memory/BACKENDS",
+          "memory/STREAMING",
+          "performance/CPU_BACKEND_TRACING"
+        ]
+      },
+      {
+        "group": "ONNX Compiler",
+        "pages": [
+          "hologram-onnx-compiler/README",
+          "hologram-onnx-compiler/ARCHITECTURE",
+          "hologram-onnx-compiler/PASS1_COLLECTION",
+          "hologram-onnx-compiler/PASS2_EMBEDDING",
+          "hologram-onnx-compiler/PASS3_PRECOMPUTATION",
+          "hologram-onnx-compiler/PASS4_BINARY",
+          "hologram-onnx-compiler/RUNTIME",
+          "hologram-onnx-compiler/BINARY_FORMAT",
+          "hologram-onnx-compiler/EXAMPLES"
+        ]
+      },
+      {
+        "group": "ONNX Runtime",
+        "pages": [
+          "onnx/ARCHITECTURE",
+          "onnx/IMPLEMENTATION_SPEC",
+          "onnx/CRATE_STRUCTURE",
+          "onnx/TESTING_STRATEGY",
+          "onnx/IMAGE_GENERATION"
+        ]
+      },
+      {
+        "group": "WebGPU Backend",
+        "pages": [
+          "webgpu/README",
+          "webgpu/QUICKSTART",
+          "webgpu/WEBGPU_IMPLEMENTATION",
+          "webgpu/IMPLEMENTATION_HISTORY",
+          "webgpu/WEBGPU_MEMORY_OPTIMIZATION",
+          "webgpu/WEBGPU_BENCHMARKING",
+          "webgpu/STREAMING_ARCHITECTURE",
+          "webgpu/CLIP_ENCODER_IMPLEMENTATION",
+          "webgpu/SDXS_PIPELINE_INTEGRATION",
+          "webgpu/SDXS_IMPLEMENTATION_COMPLETE"
+        ]
+      },
+      {
+        "group": "WASM Deployment",
+        "pages": [
+          "wasm/WASM_DEPLOYMENT_GUIDE",
+          "wasm/CROSS_PLATFORM_TESTING",
+          "wasm/MODEL_STREAMING_QUANTIZATION"
+        ]
+      },
+      {
+        "group": "PyTorch Integration",
+        "pages": [
+          "pytorch/README",
+          "pytorch/UNIVERSAL_DLPACK_ARCHITECTURE",
+          "pytorch/RECOMMENDATIONS"
+        ]
+      },
+      {
+        "group": "Kernel Development",
+        "pages": [
+          "kernels/ADDING_KERNELS",
+          "kernels/KERNEL_QUICK_REF",
+          "kernels/USER_KERNELS"
+        ]
+      },
+      {
+        "group": "MoonshineHRM",
+        "pages": [
+          "moonshine/PROGRESS",
+          "moonshine/ARCHITECTURE",
+          "moonshine/IMPLEMENTATION_HISTORY",
+          "moonshine/COMPILED_OPERATION_DESIGN",
+          "moonshine/LIFT_RESONATE_CRUSH",
+          "moonshine/ARBITRARY_PRECISION_GUARANTEES"
+        ]
+      },
+      {
+        "group": "SDK Documentation",
+        "pages": [
+          "sdk/ROADMAP",
+          "sdk/TESTING_GUIDE"
+        ]
+      },
+      {
+        "group": "Performance & Optimization",
+        "pages": [
+          "performance/BENCHMARKING",
+          "performance/CANONICALIZATION_ANALYSIS"
+        ]
+      },
+      {
+        "group": "Testing",
+        "pages": [
+          "testing/MODEL_VALIDATION_STRATEGY",
+          "testing/EARLY_ERROR_DETECTION_SUMMARY"
+        ]
+      },
+      {
+        "group": "Formal Specifications",
+        "pages": [
+          "architecture/atlas_sigil_algebra_formal_specification_v_1",
+          "architecture/hologram_ir_hgir_specification_v_1",
+          "architecture/page-theory"
+        ]
+      },
+      {
+        "group": "Development",
+        "pages": [
+          "FUTURE_PROMPTS"
+        ]
+      }
+    ],
+    "anchors": [
+      {
+        "anchor": "Community",
+        "icon": "slack",
+        "href": "https://community.hologramapp.com"
+      }
+    ]
+  },
+  "footerSocials": {
+    "github": "https://github.com/yourusername/hologramapp",
+    "twitter": "https://twitter.com/hologramapp"
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true,
+    "raiseIssue": true
+  }
+}

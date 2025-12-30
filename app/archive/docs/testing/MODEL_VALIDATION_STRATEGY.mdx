@@ -1,0 +1,338 @@
+---
+title: "Model Validation Strategy"
+description: "Model Validation Strategy documentation"
+---
+
+# Model Validation Strategy
+
+## Overview
+
+This document describes the strategy for catching model/code mismatches early in development, before they surface as runtime errors in the browser.
+
+## The Problem
+
+Runtime errors like this should never reach production:
+
+```
+Failed to create Float32 tensor: Invalid tensor: 
+Data length 78848 doesn't match shape [1, 77, 768] (expected 59136)
+```
+
+**Root cause**: Code assumed CLIP-H (768 dims) but SD Turbo uses CLIP-L (1024 dims).
+
+## Solution: Multi-Layer Validation
+
+### 1. Type-Safe Model Schemas (Compile-Time)
+
+**File**: `public/lib/diffusion/model-schemas.ts`
+
+Define TypeScript interfaces that match ONNX model specifications:
+
+```typescript
+export interface TextEncoderSchema {
+  inputs: {
+    input_ids: { shape: [1, 77]; dtype: 'int32' };
+  };
+  outputs: {
+    last_hidden_state: { shape: [1, 77, 1024]; dtype: 'float32' };
+  };
+}
+```
+
+**Benefits**:
+- Compile-time type checking
+- IDE autocomplete
+- Self-documenting code
+- Prevents typos in tensor names
+
+### 2. ONNX Model Validation (Pre-Commit)
+
+**Script**: `scripts/validate-model-schemas.py`
+
+Extracts metadata from actual ONNX models and validates against TypeScript schemas:
+
+```bash
+# Manual validation
+python3 scripts/validate-model-schemas.py
+
+# With JSON export
+python3 scripts/validate-model-schemas.py \
+  --export-json public/lib/diffusion/model-schemas.json
+```
+
+**What it checks**:
+- ✅ Input/output tensor names
+- ✅ Tensor shapes (handles dynamic dimensions)
+- ✅ Data types (float16, float32, int32, etc.)
+- ✅ Model structure consistency
+
+**Output**:
+```
+📋 Validating text_encoder...
+  ✅ text_encoder schema valid
+
+📋 Validating unet...
+  ℹ️  encoder_hidden_states: partially dynamic shape, static dims: [1024] ✓
+  ✅ unet schema valid
+```
+
+### 3. Runtime Validation (Development)
+
+**File**: `public/lib/diffusion/model-schemas.ts`
+
+```typescript
+import { validateTensorShape } from '@/lib/diffusion/model-schemas';
+
+// In production code
+const embedding = encoder.run({ input_ids });
+validateTensorShape(
+  embedding.data,
+  [1, 77, 1024],
+  'text_embedding'
+);
+```
+
+**Benefits**:
+- Catches mismatches immediately
+- Clear error messages
+- Only in development builds (tree-shaken in production)
+
+### 4. Unit Tests (CI)
+
+**File**: `public/lib/diffusion/__tests__/model-schemas.test.ts`
+
+```typescript
+describe('Shape consistency checks', () => {
+  it('text encoder output matches U-Net input', () => {
+    const encoderOutputSize = 1 * 77 * 1024;
+    const unetInputSize = 1 * 77 * 1024;
+    expect(encoderOutputSize).toBe(unetInputSize);
+  });
+});
+```
+
+**Run tests**:
+```bash
+cd public
+npm test
+```
+
+## Integration with Development Workflow
+
+### Pre-Commit Hook
+
+Add to `.git/hooks/pre-commit`:
+
+```bash
+#!/bin/bash
+./scripts/validate-models.sh || exit 1
+```
+
+### CI Pipeline
+
+Add to GitHub Actions (`.github/workflows/validate.yml`):
+
+```yaml
+name: Model Validation
+
+on: [push, pull_request]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download models
+        run: ./scripts/download_models.sh
+      
+      - name: Validate model schemas
+        run: ./scripts/validate-models.sh
+      
+      - name: Run TypeScript tests
+        run: cd public && npm test
+```
+
+### Development Workflow
+
+**Initial setup**:
+```bash
+# 1. Download models
+./scripts/download_models.sh
+
+# 2. Validate schemas
+./scripts/validate-models.sh
+```
+
+**After model changes**:
+```bash
+# 1. Re-validate
+./scripts/validate-models.sh
+
+# 2. Update TypeScript if needed
+vim public/lib/diffusion/model-schemas.ts
+
+# 3. Run tests
+cd public && npm test
+
+# 4. Rebuild WASM
+./scripts/build-wasm-demo.sh
+```
+
+## Common Issues and Solutions
+
+### Issue: Shape Mismatch
+
+```
+❌ unet.encoder_hidden_states: shape dimension 2 mismatch 
+   (expected 768, got 1024)
+```
+
+**Solution**:
+1. Check actual model: `python3 -c "import onnx; model = onnx.load('model.onnx'); print(model.graph.input[0].type.tensor_type.shape)"`
+2. Update `model-schemas.ts` with correct dimensions
+3. Update all code that uses this tensor
+4. Re-run validation
+
+### Issue: Missing Model
+
+```
+❌ Model not found: public/models/onnx/sd-turbo/text_encoder/model.onnx
+```
+
+**Solution**:
+```bash
+./scripts/download_models.sh
+```
+
+### Issue: Type Mismatch
+
+```
+❌ text_encoder.last_hidden_state: dtype mismatch 
+   (expected float32, got float16)
+```
+
+**Solution**:
+- ONNX models often use float16 for efficiency
+- Update expected schema to accept float16
+- WASM runtime converts float16 → float32 automatically
+
+### Issue: Dynamic Shapes
+
+```
+ℹ️  sample: fully dynamic shape (rank 4)
+```
+
+**Not an error** - ONNX models use dynamic shapes for batching. Validation checks:
+- ✅ Rank (number of dimensions) matches
+- ✅ Static dimensions (if any) match
+- ⚠️ Dynamic dimensions (0 values) are flexible
+
+## Best Practices
+
+### 1. Always Validate Before Committing
+
+```bash
+./scripts/validate-models.sh
+```
+
+### 2. Use Type-Safe Constants
+
+```typescript
+import { SD_TURBO_CONFIG } from '@/lib/diffusion/model-schemas';
+
+// ✅ Good - uses constants
+const hiddenSize = SD_TURBO_CONFIG.CLIP_HIDDEN_SIZE;
+
+// ❌ Bad - magic number
+const hiddenSize = 1024;
+```
+
+### 3. Add Runtime Checks in Development
+
+```typescript
+if (process.env.NODE_ENV === 'development') {
+  validateTensorShape(data, expectedShape, 'tensor_name');
+}
+```
+
+### 4. Document Model Requirements
+
+```typescript
+/**
+ * Encode text prompt to embeddings
+ *
+ * @param tokenIds - CLIP token IDs [1, 77]
+ * @returns Text embeddings [1, 77, 1024] (CLIP-L)
+ */
+private async encodeText(tokenIds: number[]): Promise<Float32Array> {
+  // Implementation
+}
+```
+
+### 5. Version Model Schemas
+
+```typescript
+export const SD_TURBO_SCHEMA_VERSION = '2.0';  // Update when models change
+```
+
+## Files Overview
+
+| File | Purpose | When to Update |
+|------|---------|----------------|
+| `model-schemas.ts` | TypeScript type definitions | When model interface changes |
+| `validate-model-schemas.py` | ONNX metadata extraction | When adding new models |
+| `validate-models.sh` | Validation wrapper script | Rarely |
+| `model-schemas.json` | Generated schema export | Auto-generated, don't edit |
+| `__tests__/model-schemas.test.ts` | Unit tests | When adding new models |
+
+## Validation Checklist
+
+Before committing model-related changes:
+
+- [ ] Run `./scripts/validate-models.sh` ✓
+- [ ] All schemas pass validation
+- [ ] TypeScript types match ONNX models
+- [ ] Unit tests pass
+- [ ] WASM builds successfully
+- [ ] Demo works in browser
+- [ ] No console errors
+
+## Future Enhancements
+
+### Automated Shape Inference
+
+Generate TypeScript types from ONNX models automatically:
+
+```bash
+python3 scripts/generate-types-from-onnx.py \
+  --input public/models/onnx/sd-turbo \
+  --output public/lib/diffusion/model-schemas.generated.ts
+```
+
+### Performance Benchmarks
+
+Validate that shape changes don't degrade performance:
+
+```bash
+./scripts/benchmark-models.sh --before --after
+```
+
+### Multi-Model Support
+
+Extend validation to support multiple model versions:
+
+```typescript
+export const MODEL_SCHEMAS = {
+  'sd-turbo': { /* ... */ },
+  'sd-xl': { /* ... */ },
+  'sdxs-512': { /* ... */ },
+};
+```
+
+## References
+
+- ONNX Operator Schemas: https://github.com/onnx/onnx/blob/main/docs/Operators.md
+- ONNX Data Types: https://github.com/onnx/onnx/blob/main/docs/IR.md
+- Stable Diffusion Architecture: https://arxiv.org/abs/2112.10752
+- CLIP Model: https://arxiv.org/abs/2103.00020

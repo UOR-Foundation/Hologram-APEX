@@ -1,0 +1,1126 @@
+---
+title: "Model Streaming & Quantization Guide"
+description: "Model Streaming & Quantization Guide documentation"
+---
+
+# Model Streaming & Quantization Guide
+
+This document provides comprehensive guidance for implementing efficient model loading, streaming, and quantization strategies to minimize WASM bundle sizes and optimize performance.
+
+## Overview
+
+**Goal**: Enable production-ready ML inference in browsers with minimal initial load time and efficient resource usage.
+
+**Key Challenges**:
+- Large model files (100MB-500MB+) are impractical for web delivery
+- Full model download blocks time-to-first-inference
+- Limited browser memory on mobile devices
+- Network latency for model downloads
+
+**Solutions**:
+- Progressive model loading (streaming)
+- Quantization (INT8, INT4)
+- Layer-level chunking
+- IndexedDB caching
+- CDN optimization
+
+---
+
+## Performance Targets
+
+| Metric | Current | Target | Impact |
+|--------|---------|--------|--------|
+| Initial bundle size | N/A | <5MB | Critical for page load |
+| Time to first inference | N/A | <3s | User experience |
+| Full model size (BERT-base) | ~440MB (FP32) | ~50MB (INT8) | 88% reduction |
+| Cache hit latency | N/A | <100ms | Subsequent loads |
+| Memory usage (mobile) | N/A | <200MB | Device compatibility |
+
+---
+
+## Strategy 1: Progressive Model Loading
+
+**Concept**: Load model incrementally, starting inference with minimal components, loading additional layers as needed.
+
+### Architecture
+
+```
+Model File Structure:
+├── metadata.json          # Model config (1KB)
+├── embeddings.bin         # Token embeddings (10-50MB)
+├── layer_0.bin           # First transformer layer (5-10MB)
+├── layer_1.bin           # Second transformer layer
+├── ...
+├── layer_N.bin           # Final layer
+└── head.bin              # Output projection (1-5MB)
+
+Loading Strategy:
+1. Download metadata (immediate)
+2. Download embeddings (parallel, cached)
+3. Download layer 0 (start inference)
+4. Download remaining layers (background, lazy)
+```
+
+### Implementation
+
+#### Model Splitter Tool
+
+**Purpose**: Split monolithic model files into streamable chunks.
+
+```python
+# scripts/split_model.py
+import json
+import numpy as np
+from pathlib import Path
+from typing import Dict, List
+
+def split_bert_model(model_path: str, output_dir: str):
+    """
+    Split BERT model into streamable chunks.
+
+    Args:
+        model_path: Path to full BERT model (.safetensors or .bin)
+        output_dir: Directory to write chunks
+    """
+    from safetensors import safe_open
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Load model tensors
+    tensors = {}
+    with safe_open(model_path, framework="numpy") as f:
+        for key in f.keys():
+            tensors[key] = f.get_tensor(key)
+
+    # Extract metadata
+    metadata = {
+        "model_type": "bert-base-uncased",
+        "num_layers": 12,
+        "hidden_size": 768,
+        "vocab_size": 30522,
+        "chunks": [],
+    }
+
+    # Save embeddings (token + position + type)
+    embeddings = {
+        "word_embeddings": tensors.pop("embeddings.word_embeddings.weight"),
+        "position_embeddings": tensors.pop("embeddings.position_embeddings.weight"),
+        "token_type_embeddings": tensors.pop("embeddings.token_type_embeddings.weight"),
+        "LayerNorm": {
+            "weight": tensors.pop("embeddings.LayerNorm.weight"),
+            "bias": tensors.pop("embeddings.LayerNorm.bias"),
+        },
+    }
+    save_chunk(output_path / "embeddings.bin", embeddings)
+    metadata["chunks"].append({
+        "name": "embeddings",
+        "file": "embeddings.bin",
+        "size": get_chunk_size(embeddings),
+        "priority": 1,  # High priority
+    })
+
+    # Save each transformer layer
+    for layer_idx in range(12):
+        layer_tensors = {
+            key.split(f"encoder.layer.{layer_idx}.")[1]: value
+            for key, value in tensors.items()
+            if f"encoder.layer.{layer_idx}." in key
+        }
+
+        if layer_tensors:
+            layer_file = f"layer_{layer_idx}.bin"
+            save_chunk(output_path / layer_file, layer_tensors)
+            metadata["chunks"].append({
+                "name": f"layer_{layer_idx}",
+                "file": layer_file,
+                "size": get_chunk_size(layer_tensors),
+                "priority": 2 if layer_idx < 4 else 3,  # First 4 layers higher priority
+            })
+
+    # Save pooler and classifier head
+    head_tensors = {
+        key: value
+        for key, value in tensors.items()
+        if key.startswith("pooler") or key.startswith("classifier")
+    }
+    if head_tensors:
+        save_chunk(output_path / "head.bin", head_tensors)
+        metadata["chunks"].append({
+            "name": "head",
+            "file": "head.bin",
+            "size": get_chunk_size(head_tensors),
+            "priority": 2,
+        })
+
+    # Write metadata
+    with open(output_path / "metadata.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print(f"Model split into {len(metadata['chunks'])} chunks")
+    print(f"Total size: {sum(c['size'] for c in metadata['chunks']) / 1024 / 1024:.2f} MB")
+
+
+def save_chunk(path: Path, tensors: Dict[str, np.ndarray]):
+    """Save tensor chunk in efficient binary format."""
+    with open(path, "wb") as f:
+        # Write header
+        f.write(b"HGRM")  # Magic number
+        f.write(len(tensors).to_bytes(4, "little"))
+
+        # Write tensor index
+        offset = 8 + len(tensors) * 32  # Header + index size
+        for name, tensor in tensors.items():
+            name_bytes = name.encode("utf-8")[:24].ljust(24, b'\x00')
+            f.write(name_bytes)
+            f.write(offset.to_bytes(4, "little"))
+            f.write(tensor.nbytes.to_bytes(4, "little"))
+            offset += tensor.nbytes
+
+        # Write tensor data
+        for tensor in tensors.values():
+            f.write(tensor.tobytes())
+
+
+def get_chunk_size(tensors: Dict[str, np.ndarray]) -> int:
+    """Calculate total size of tensor chunk in bytes."""
+    return sum(t.nbytes for t in tensors.values()) + 8 + len(tensors) * 32
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) != 3:
+        print("Usage: python split_model.py <model_path> <output_dir>")
+        sys.exit(1)
+
+    split_bert_model(sys.argv[1], sys.argv[2])
+```
+
+#### Streaming Loader (Rust)
+
+```rust
+// hologram-models/src/streaming.rs
+use std::collections::HashMap;
+use std::path::Path;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize)]
+pub struct ModelMetadata {
+    pub model_type: String,
+    pub num_layers: usize,
+    pub hidden_size: usize,
+    pub vocab_size: usize,
+    pub chunks: Vec<ChunkInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChunkInfo {
+    pub name: String,
+    pub file: String,
+    pub size: usize,
+    pub priority: u8,
+}
+
+pub struct StreamingModelLoader {
+    base_url: String,
+    cache: ModelCache,
+    loaded_chunks: HashMap<String, Vec<u8>>,
+}
+
+impl StreamingModelLoader {
+    pub fn new(base_url: String) -> Self {
+        Self {
+            base_url,
+            cache: ModelCache::new(),
+            loaded_chunks: HashMap::new(),
+        }
+    }
+
+    /// Load model metadata (fast, <1KB)
+    pub async fn load_metadata(&self) -> Result<ModelMetadata> {
+        let url = format!("{}/metadata.json", self.base_url);
+        let response = reqwest::get(&url).await?;
+        let metadata: ModelMetadata = response.json().await?;
+        Ok(metadata)
+    }
+
+    /// Load high-priority chunks required for first inference
+    pub async fn load_initial_chunks(&mut self, metadata: &ModelMetadata) -> Result<()> {
+        let priority_chunks: Vec<_> = metadata
+            .chunks
+            .iter()
+            .filter(|c| c.priority == 1)
+            .collect();
+
+        // Load all priority 1 chunks in parallel
+        let futures: Vec<_> = priority_chunks
+            .iter()
+            .map(|chunk| self.load_chunk(&chunk.file))
+            .collect();
+
+        let results = futures::future::join_all(futures).await;
+
+        for (chunk, result) in priority_chunks.iter().zip(results) {
+            let data = result?;
+            self.loaded_chunks.insert(chunk.name.clone(), data);
+        }
+
+        Ok(())
+    }
+
+    /// Load remaining chunks in background
+    pub async fn load_remaining_chunks(&mut self, metadata: &ModelMetadata) -> Result<()> {
+        let remaining: Vec<_> = metadata
+            .chunks
+            .iter()
+            .filter(|c| !self.loaded_chunks.contains_key(&c.name))
+            .collect();
+
+        for chunk in remaining {
+            let data = self.load_chunk(&chunk.file).await?;
+            self.loaded_chunks.insert(chunk.name.clone(), data);
+        }
+
+        Ok(())
+    }
+
+    /// Load single chunk (with caching)
+    async fn load_chunk(&self, filename: &str) -> Result<Vec<u8>> {
+        // Check cache first
+        if let Some(data) = self.cache.get(filename).await? {
+            return Ok(data);
+        }
+
+        // Download from CDN
+        let url = format!("{}/{}", self.base_url, filename);
+        let response = reqwest::get(&url).await?;
+        let data = response.bytes().await?.to_vec();
+
+        // Cache for future use
+        self.cache.put(filename, &data).await?;
+
+        Ok(data)
+    }
+
+    /// Get loaded chunk
+    pub fn get_chunk(&self, name: &str) -> Option<&[u8]> {
+        self.loaded_chunks.get(name).map(|v| v.as_slice())
+    }
+}
+```
+
+#### TypeScript Streaming Loader
+
+```typescript
+// hologram-ffi/interfaces/typescript/src/streaming-loader.ts
+interface ModelMetadata {
+  model_type: string;
+  num_layers: number;
+  hidden_size: number;
+  vocab_size: number;
+  chunks: ChunkInfo[];
+}
+
+interface ChunkInfo {
+  name: string;
+  file: string;
+  size: number;
+  priority: number;
+}
+
+export class StreamingModelLoader {
+  private baseUrl: string;
+  private cache: ModelCache;
+  private loadedChunks: Map<string, ArrayBuffer>;
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl;
+    this.cache = new ModelCache();
+    this.loadedChunks = new Map();
+  }
+
+  async loadMetadata(): Promise<ModelMetadata> {
+    const response = await fetch(`${this.baseUrl}/metadata.json`);
+    return response.json();
+  }
+
+  async loadInitialChunks(metadata: ModelMetadata): Promise<void> {
+    const priorityChunks = metadata.chunks.filter((c) => c.priority === 1);
+
+    // Load in parallel
+    await Promise.all(
+      priorityChunks.map(async (chunk) => {
+        const data = await this.loadChunk(chunk.file);
+        this.loadedChunks.set(chunk.name, data);
+      })
+    );
+  }
+
+  async loadRemainingChunks(
+    metadata: ModelMetadata,
+    onProgress?: (loaded: number, total: number) => void
+  ): Promise<void> {
+    const remaining = metadata.chunks.filter(
+      (c) => !this.loadedChunks.has(c.name)
+    );
+
+    let loaded = 0;
+    for (const chunk of remaining) {
+      const data = await this.loadChunk(chunk.file);
+      this.loadedChunks.set(chunk.name, data);
+      loaded++;
+      onProgress?.(loaded, remaining.length);
+    }
+  }
+
+  private async loadChunk(filename: string): Promise<ArrayBuffer> {
+    // Check IndexedDB cache
+    const cached = await this.cache.get(filename);
+    if (cached) {
+      return cached;
+    }
+
+    // Download with progress tracking
+    const response = await fetch(`${this.baseUrl}/${filename}`);
+    if (!response.ok) {
+      throw new Error(`Failed to load chunk: ${filename}`);
+    }
+
+    const data = await response.arrayBuffer();
+
+    // Cache for future use
+    await this.cache.put(filename, data);
+
+    return data;
+  }
+
+  getChunk(name: string): ArrayBuffer | undefined {
+    return this.loadedChunks.get(name);
+  }
+}
+```
+
+### Usage Example
+
+```typescript
+// Load model progressively
+const loader = new StreamingModelLoader('https://cdn.hologram.dev/models/bert-base');
+
+// 1. Load metadata (instant)
+const metadata = await loader.loadMetadata();
+console.log(`Model: ${metadata.model_type}, ${metadata.num_layers} layers`);
+
+// 2. Load essential chunks (1-2s)
+await loader.loadInitialChunks(metadata);
+console.log('Ready for first inference!');
+
+// 3. Start inference immediately
+const embedding = await hologram.generateEmbedding('Hello, world!');
+
+// 4. Load remaining chunks in background
+loader.loadRemainingChunks(metadata, (loaded, total) => {
+  console.log(`Loading: ${loaded}/${total} chunks`);
+});
+```
+
+---
+
+## Strategy 2: Model Quantization
+
+**Concept**: Reduce model precision from FP32 (32-bit) to INT8 (8-bit) or INT4 (4-bit) with minimal accuracy loss.
+
+### Quantization Benefits
+
+| Precision | Size | Speed | Accuracy Loss | Use Case |
+|-----------|------|-------|---------------|----------|
+| **FP32** | 1x (baseline) | 1x | 0% | Development, high precision |
+| **FP16** | 0.5x | 1.5-2x | <0.1% | GPU inference |
+| **INT8** | 0.25x | 2-4x | 0.5-2% | Production (BERT, ResNet) |
+| **INT4** | 0.125x | 3-6x | 2-5% | Aggressive optimization |
+
+**Recommendation**: Start with INT8 for production WASM deployments.
+
+### INT8 Quantization Implementation
+
+#### Quantization Tool
+
+```python
+# scripts/quantize_model.py
+import torch
+import numpy as np
+from pathlib import Path
+from typing import Dict, Tuple
+
+def quantize_tensor_int8(tensor: np.ndarray) -> Tuple[np.ndarray, float, int]:
+    """
+    Quantize FP32 tensor to INT8 with scale and zero-point.
+
+    Returns:
+        quantized: INT8 tensor
+        scale: Scaling factor
+        zero_point: Zero-point offset
+    """
+    # Compute scale and zero-point
+    min_val = float(tensor.min())
+    max_val = float(tensor.max())
+
+    # Quantization range: -128 to 127 for INT8
+    qmin, qmax = -128, 127
+    scale = (max_val - min_val) / (qmax - qmin)
+    zero_point = qmin - int(min_val / scale)
+
+    # Clamp zero-point to valid range
+    zero_point = np.clip(zero_point, qmin, qmax)
+
+    # Quantize
+    quantized = np.round(tensor / scale + zero_point)
+    quantized = np.clip(quantized, qmin, qmax).astype(np.int8)
+
+    return quantized, scale, zero_point
+
+
+def dequantize_tensor_int8(
+    quantized: np.ndarray,
+    scale: float,
+    zero_point: int
+) -> np.ndarray:
+    """
+    Dequantize INT8 tensor back to FP32.
+    """
+    return (quantized.astype(np.float32) - zero_point) * scale
+
+
+def quantize_model_int8(model_path: str, output_path: str):
+    """
+    Quantize entire model to INT8.
+    """
+    from safetensors import safe_open
+
+    tensors_fp32 = {}
+    with safe_open(model_path, framework="numpy") as f:
+        for key in f.keys():
+            tensors_fp32[key] = f.get_tensor(key)
+
+    quantized_model = {
+        "quantization": "int8",
+        "tensors": {},
+        "scales": {},
+        "zero_points": {},
+    }
+
+    total_size_fp32 = 0
+    total_size_int8 = 0
+
+    for name, tensor in tensors_fp32.items():
+        total_size_fp32 += tensor.nbytes
+
+        # Skip very small tensors (biases, LayerNorm)
+        if tensor.size < 1000:
+            quantized_model["tensors"][name] = tensor
+            total_size_int8 += tensor.nbytes
+            continue
+
+        # Quantize large tensors (weights)
+        q_tensor, scale, zero_point = quantize_tensor_int8(tensor)
+        quantized_model["tensors"][name] = q_tensor
+        quantized_model["scales"][name] = scale
+        quantized_model["zero_points"][name] = zero_point
+
+        total_size_int8 += q_tensor.nbytes + 8  # +8 for scale/zero_point
+
+    # Save quantized model
+    np.savez_compressed(
+        output_path,
+        **quantized_model["tensors"],
+        __scales__=np.array(list(quantized_model["scales"].values())),
+        __zero_points__=np.array(list(quantized_model["zero_points"].values())),
+    )
+
+    compression_ratio = total_size_fp32 / total_size_int8
+    print(f"Quantization complete:")
+    print(f"  FP32 size: {total_size_fp32 / 1024 / 1024:.2f} MB")
+    print(f"  INT8 size: {total_size_int8 / 1024 / 1024:.2f} MB")
+    print(f"  Compression: {compression_ratio:.2f}x")
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) != 3:
+        print("Usage: python quantize_model.py <model_path> <output_path>")
+        sys.exit(1)
+
+    quantize_model_int8(sys.argv[1], sys.argv[2])
+```
+
+#### Quantized Inference (Rust)
+
+```rust
+// hologram-core/src/ops/quantized.rs
+use crate::{Buffer, Executor, Result};
+
+/// INT8 quantized matrix multiplication
+pub fn qmatmul_int8(
+    exec: &Executor,
+    a: &Buffer<i8>,          // Quantized matrix A
+    b: &Buffer<i8>,          // Quantized matrix B
+    scale_a: f32,            // Scale for A
+    scale_b: f32,            // Scale for B
+    zero_point_a: i8,        // Zero-point for A
+    zero_point_b: i8,        // Zero-point for B
+    output: &mut Buffer<f32>, // Dequantized output
+    m: usize,
+    n: usize,
+    k: usize,
+) -> Result<()> {
+    // Allocate INT32 accumulator (avoid overflow)
+    let mut acc = exec.allocate::<i32>(m * k)?;
+
+    // INT8 matrix multiply → INT32 accumulator
+    unsafe {
+        // Use SIMD INT8 multiplication
+        for i in 0..m {
+            for j in 0..k {
+                let mut sum: i32 = 0;
+                for l in 0..n {
+                    let a_val = a.get(i * n + l)? as i32;
+                    let b_val = b.get(l * k + j)? as i32;
+                    sum += a_val * b_val;
+                }
+                acc.set(i * k + j, sum)?;
+            }
+        }
+    }
+
+    // Dequantize: (acc - zero_point) * scale_a * scale_b
+    let combined_scale = scale_a * scale_b;
+    let zero_correction = (zero_point_a as i32) * (zero_point_b as i32);
+
+    for i in 0..(m * k) {
+        let acc_val = acc.get(i)?;
+        let dequantized = ((acc_val - zero_correction) as f32) * combined_scale;
+        output.set(i, dequantized)?;
+    }
+
+    Ok(())
+}
+
+/// INT8 quantized vector addition
+pub fn qadd_int8(
+    exec: &Executor,
+    a: &Buffer<i8>,
+    b: &Buffer<i8>,
+    scale_a: f32,
+    scale_b: f32,
+    zero_point_a: i8,
+    zero_point_b: i8,
+    output: &mut Buffer<f32>,
+    n: usize,
+) -> Result<()> {
+    for i in 0..n {
+        let a_fp32 = ((a.get(i)? - zero_point_a) as f32) * scale_a;
+        let b_fp32 = ((b.get(i)? - zero_point_b) as f32) * scale_b;
+        output.set(i, a_fp32 + b_fp32)?;
+    }
+    Ok(())
+}
+```
+
+### Quantization-Aware Training (QAT)
+
+For best accuracy, retrain model with quantization:
+
+```python
+# scripts/qat_training.py
+import torch
+import torch.nn as nn
+from torch.quantization import QuantStub, DeQuantStub, prepare_qat, convert
+
+class QuantizedBERT(nn.Module):
+    def __init__(self, bert_model):
+        super().__init__()
+        self.quant = QuantStub()
+        self.bert = bert_model
+        self.dequant = DeQuantStub()
+
+    def forward(self, x):
+        x = self.quant(x)
+        x = self.bert(x)
+        x = self.dequant(x)
+        return x
+
+
+# Prepare for QAT
+model = QuantizedBERT(bert_model)
+model.qconfig = torch.quantization.get_default_qat_qconfig('fbgemm')
+model_prepared = prepare_qat(model)
+
+# Fine-tune with quantization simulation
+for epoch in range(3):
+    train_epoch(model_prepared, train_loader)
+
+# Convert to quantized model
+model_quantized = convert(model_prepared)
+
+# Export to ONNX → Hologram format
+torch.onnx.export(model_quantized, dummy_input, "bert_int8.onnx")
+```
+
+---
+
+## Strategy 3: IndexedDB Caching
+
+**Concept**: Cache model chunks in browser's IndexedDB for instant loading on subsequent visits.
+
+### Implementation
+
+```typescript
+// hologram-ffi/interfaces/typescript/src/cache.ts
+export class ModelCache {
+  private db: IDBDatabase | null = null;
+  private readonly DB_NAME = 'hologram-model-cache';
+  private readonly DB_VERSION = 1;
+  private readonly STORE_NAME = 'chunks';
+
+  async init(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'id' });
+          store.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+      };
+    });
+  }
+
+  async get(key: string): Promise<ArrayBuffer | null> {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.STORE_NAME], 'readonly');
+      const store = transaction.objectStore(this.STORE_NAME);
+      const request = store.get(key);
+
+      request.onsuccess = () => {
+        if (request.result) {
+          console.log(`Cache HIT: ${key}`);
+          resolve(request.result.data);
+        } else {
+          console.log(`Cache MISS: ${key}`);
+          resolve(null);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async put(key: string, data: ArrayBuffer): Promise<void> {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(this.STORE_NAME);
+      const request = store.put({
+        id: key,
+        data,
+        timestamp: Date.now(),
+        size: data.byteLength,
+      });
+
+      request.onsuccess = () => {
+        console.log(`Cached: ${key} (${(data.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clear(): Promise<void> {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(this.STORE_NAME);
+      const request = store.clear();
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async evictOldest(maxSizeMB: number): Promise<void> {
+    if (!this.db) await this.init();
+
+    // Get all cached items
+    const items = await this.listAll();
+
+    // Calculate total size
+    const totalSize = items.reduce((sum, item) => sum + item.size, 0);
+    const totalSizeMB = totalSize / 1024 / 1024;
+
+    if (totalSizeMB <= maxSizeMB) return;
+
+    // Sort by timestamp (oldest first)
+    items.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Evict oldest until under limit
+    let currentSize = totalSizeMB;
+    for (const item of items) {
+      if (currentSize <= maxSizeMB) break;
+      await this.delete(item.id);
+      currentSize -= item.size / 1024 / 1024;
+      console.log(`Evicted: ${item.id}`);
+    }
+  }
+
+  private async listAll(): Promise<Array<{
+    id: string;
+    timestamp: number;
+    size: number;
+  }>> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.STORE_NAME], 'readonly');
+      const store = transaction.objectStore(this.STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  private async delete(key: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(this.STORE_NAME);
+      const request = store.delete(key);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+```
+
+### Cache Usage
+
+```typescript
+const cache = new ModelCache();
+await cache.init();
+
+// Check cache before downloading
+let embedding = await cache.get('bert-base/embeddings.bin');
+if (!embedding) {
+  embedding = await fetch('https://cdn.hologram.dev/models/bert-base/embeddings.bin')
+    .then(r => r.arrayBuffer());
+  await cache.put('bert-base/embeddings.bin', embedding);
+}
+
+// Evict old models if cache too large (e.g., >500MB)
+await cache.evictOldest(500);
+```
+
+---
+
+## Strategy 4: CDN Optimization
+
+**Concept**: Use CDN for fast, global model delivery with compression and range requests.
+
+### CDN Configuration
+
+#### Cloudflare Workers + R2
+
+```javascript
+// cloudflare-worker.js
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
+
+async function handleRequest(request) {
+  const url = new URL(request.url)
+  const key = url.pathname.slice(1) // Remove leading /
+
+  // Handle range requests for streaming
+  const range = request.headers.get('Range')
+
+  // Fetch from R2 storage
+  const object = await R2_BUCKET.get(key, {
+    range: range ? parseRange(range) : undefined
+  })
+
+  if (!object) {
+    return new Response('Not found', { status: 404 })
+  }
+
+  // Set aggressive caching headers
+  const headers = new Headers()
+  headers.set('Content-Type', 'application/octet-stream')
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  headers.set('Access-Control-Allow-Origin', '*')
+  headers.set('Content-Encoding', 'br') // Brotli compression
+
+  if (range) {
+    headers.set('Content-Range', `bytes ${object.range.offset}-${object.range.offset + object.size - 1}/${object.size}`)
+    return new Response(object.body, { status: 206, headers })
+  }
+
+  return new Response(object.body, { headers })
+}
+
+function parseRange(rangeHeader) {
+  const match = rangeHeader.match(/bytes=(\d+)-(\d+)?/)
+  if (!match) return undefined
+  return {
+    offset: parseInt(match[1]),
+    length: match[2] ? parseInt(match[2]) - parseInt(match[1]) + 1 : undefined
+  }
+}
+```
+
+#### Compression
+
+```bash
+# Pre-compress model chunks with Brotli (best compression)
+for file in *.bin; do
+  brotli -q 11 -o "${file}.br" "$file"
+done
+
+# Upload compressed versions to CDN
+for file in *.bin.br; do
+  cloudflare r2 upload "models/bert-base/$file"
+done
+```
+
+---
+
+## Complete Workflow
+
+### End-to-End Model Optimization Pipeline
+
+```bash
+#!/bin/bash
+# scripts/optimize_model_for_wasm.sh
+
+MODEL_ID="bert-base-uncased"
+MODEL_PATH="models/${MODEL_ID}/pytorch_model.bin"
+OUTPUT_DIR="optimized/${MODEL_ID}"
+
+echo "=== Model Optimization Pipeline ==="
+
+# 1. Quantize to INT8
+echo "[1/4] Quantizing to INT8..."
+python scripts/quantize_model.py "$MODEL_PATH" "${OUTPUT_DIR}/model_int8.npz"
+
+# 2. Split into chunks
+echo "[2/4] Splitting into chunks..."
+python scripts/split_model.py "${OUTPUT_DIR}/model_int8.npz" "${OUTPUT_DIR}/chunks"
+
+# 3. Compress with Brotli
+echo "[3/4] Compressing with Brotli..."
+for file in "${OUTPUT_DIR}/chunks"/*.bin; do
+  brotli -q 11 -o "${file}.br" "$file"
+done
+
+# 4. Upload to CDN
+echo "[4/4] Uploading to CDN..."
+for file in "${OUTPUT_DIR}/chunks"/*; do
+  cloudflare r2 upload "models/${MODEL_ID}/$(basename $file)" < "$file"
+done
+
+echo "=== Optimization Complete ==="
+echo "Original size: $(du -sh $MODEL_PATH | cut -f1)"
+echo "Optimized size: $(du -sh ${OUTPUT_DIR}/chunks | cut -f1)"
+echo "Compression ratio: $(python -c "import os; print(f'{os.path.getsize(\"$MODEL_PATH\") / sum(os.path.getsize(os.path.join(\"${OUTPUT_DIR}/chunks\", f)) for f in os.listdir(\"${OUTPUT_DIR}/chunks\")):.2f}x')")"
+```
+
+### Browser Integration
+
+```typescript
+// Complete example: Load optimized BERT model
+import { StreamingModelLoader } from 'hologram-ffi';
+import { ModelCache } from './cache';
+
+async function loadOptimizedBERT() {
+  const loader = new StreamingModelLoader(
+    'https://cdn.hologram.dev/models/bert-base-int8'
+  );
+
+  // Step 1: Load metadata (instant)
+  console.time('Metadata load');
+  const metadata = await loader.loadMetadata();
+  console.timeEnd('Metadata load');
+  console.log(`Model: ${metadata.model_type}, ${metadata.num_layers} layers`);
+
+  // Step 2: Load priority chunks (embeddings + first layers)
+  console.time('Initial chunks load');
+  await loader.loadInitialChunks(metadata);
+  console.timeEnd('Initial chunks load');
+  console.log('Ready for inference!');
+
+  // Step 3: Background load remaining chunks
+  loader.loadRemainingChunks(metadata, (loaded, total) => {
+    const progress = (loaded / total) * 100;
+    console.log(`Background loading: ${progress.toFixed(0)}%`);
+  });
+
+  return loader;
+}
+
+// Usage
+const model = await loadOptimizedBERT();
+const embedding = await model.generateEmbedding('Hello, Hologram!');
+console.log(`Embedding: ${embedding.length} dimensions`);
+```
+
+---
+
+## Performance Monitoring
+
+### Bundle Size Tracking
+
+```javascript
+// Track bundle sizes in CI
+const fs = require('fs');
+const path = require('path');
+
+function getBundleSize(filePath) {
+  const stats = fs.statSync(filePath);
+  return stats.size;
+}
+
+const bundles = {
+  wasm: 'dist/hologram.wasm',
+  js: 'dist/hologram.js',
+  model: 'dist/models/bert-base-int8/embeddings.bin',
+};
+
+const sizes = {};
+for (const [name, file] of Object.entries(bundles)) {
+  sizes[name] = getBundleSize(file);
+  console.log(`${name}: ${(sizes[name] / 1024 / 1024).toFixed(2)} MB`);
+}
+
+// Fail if bundle too large
+const MAX_WASM_SIZE = 5 * 1024 * 1024; // 5MB
+if (sizes.wasm > MAX_WASM_SIZE) {
+  console.error(`WASM bundle too large: ${sizes.wasm} > ${MAX_WASM_SIZE}`);
+  process.exit(1);
+}
+```
+
+### Runtime Performance Metrics
+
+```typescript
+// Track model loading performance
+const metrics = {
+  metadataLoad: 0,
+  initialChunksLoad: 0,
+  fullModelLoad: 0,
+  firstInference: 0,
+  cacheHitRate: 0,
+};
+
+// Measure metadata load
+const t0 = performance.now();
+await loader.loadMetadata();
+metrics.metadataLoad = performance.now() - t0;
+
+// Measure initial chunks load
+const t1 = performance.now();
+await loader.loadInitialChunks(metadata);
+metrics.initialChunksLoad = performance.now() - t1;
+
+// Report to analytics
+analytics.track('Model Load Performance', metrics);
+```
+
+---
+
+## Testing & Validation
+
+### Accuracy Validation
+
+```python
+# Verify quantized model accuracy
+import numpy as np
+from transformers import BertTokenizer, BertModel
+
+# Load original FP32 model
+model_fp32 = BertModel.from_pretrained('bert-base-uncased')
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+# Load quantized INT8 model
+model_int8 = load_quantized_model('bert-base-int8')
+
+# Test on sample inputs
+inputs = [
+    "Hello, world!",
+    "The quick brown fox jumps over the lazy dog.",
+    "Machine learning is awesome.",
+]
+
+for text in inputs:
+    tokens = tokenizer(text, return_tensors='pt')
+
+    # FP32 inference
+    with torch.no_grad():
+        output_fp32 = model_fp32(**tokens).last_hidden_state
+
+    # INT8 inference
+    output_int8 = model_int8.forward(tokens)
+
+    # Compare outputs
+    diff = np.abs(output_fp32.numpy() - output_int8.numpy())
+    max_diff = diff.max()
+    mean_diff = diff.mean()
+
+    print(f"Text: {text}")
+    print(f"  Max diff: {max_diff:.6f}")
+    print(f"  Mean diff: {mean_diff:.6f}")
+    print(f"  Accuracy: {100 * (1 - mean_diff):.2f}%")
+```
+
+### Cache Validation
+
+```typescript
+// Test IndexedDB cache
+const cache = new ModelCache();
+await cache.init();
+
+// Write test
+const testData = new Uint8Array([1, 2, 3, 4, 5]);
+await cache.put('test-key', testData.buffer);
+
+// Read test
+const retrieved = await cache.get('test-key');
+assert(new Uint8Array(retrieved!).every((v, i) => v === testData[i]));
+
+// Eviction test
+for (let i = 0; i < 100; i++) {
+  const largeData = new Uint8Array(10 * 1024 * 1024); // 10MB
+  await cache.put(`large-${i}`, largeData.buffer);
+}
+await cache.evictOldest(500); // Keep only 500MB
+const remaining = await cache.listAll();
+assert(remaining.length < 100);
+```
+
+---
+
+## Related Documentation
+
+- [NEXT_STEPS.md](NEXT_STEPS.md) - Overall WASM roadmap
+- [WASM_DEPLOYMENT_GUIDE.md](WASM_DEPLOYMENT_GUIDE.md) - Deployment details
+- [DEMO_APPLICATIONS.md](DEMO_APPLICATIONS.md) - Demo implementation
+
+---
+
+**Last Updated**: 2025-11-05
+**Status**: Implementation Ready

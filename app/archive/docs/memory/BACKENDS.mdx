@@ -1,0 +1,645 @@
+---
+title: "Backend Integration Guide"
+description: "Backend Integration Guide documentation"
+---
+
+# Backend Integration Guide
+
+**Integrating hologram-memory-manager with hologram-backends**
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Backend Trait Requirements](#backend-trait-requirements)
+3. [Device Pool Management](#device-pool-management)
+4. [Gauge Metadata Integration](#gauge-metadata-integration)
+5. [Backend-Specific Patterns](#backend-specific-patterns)
+6. [WASM Backend Details](#wasm-backend-details)
+7. [Performance Considerations](#performance-considerations)
+
+---
+
+## Overview
+
+The hologram-memory-manager is designed to work seamlessly with **hologram-backends**, the unified backend abstraction for CPU, Metal, CUDA, WASM, and WebGPU execution.
+
+### Integration Architecture
+
+```
+┌────────────────────────────────────────────────────────┐
+│          hologram-memory-manager                       │
+│                                                        │
+│  ┌──────────────┐         ┌─────────────────────┐    │
+│  │ ChunkWithGauge│         │  MemoryStorage      │    │
+│  │  EmbeddedBlock │────────▶│  - CpuShared(Arc)   │    │
+│  └──────────────┘         │  - DevicePool {...} │    │
+│                           └─────────────────────┘    │
+│                                     │                 │
+└─────────────────────────────────────┼─────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────┐
+│                 hologram-backends                       │
+│                                                         │
+│  Backend Trait:                                         │
+│  - allocate_pool(size) -> PoolHandle                    │
+│  - copy_to_pool(pool, offset, data)                     │
+│  - copy_from_pool(pool, offset, buf)                    │
+│  - execute_program_with_params(prog, params)            │
+│                                                         │
+│  ExecutionParams:                                       │
+│  - launch_config (grid, block dimensions)               │
+│  - gauge_metadata (optional optimization hints)         │
+│                                                         │
+│  Implementations:                                       │
+│  ├─ CpuBackend     (hologram-backends/src/backends/cpu/)│
+│  ├─ MetalBackend   (hologram-backends/src/backends/metal/)│
+│  ├─ CudaBackend    (hologram-backends/src/backends/cuda/)│
+│  └─ WasmBackend    (hologram-backends/src/backends/wasm/)│
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Integration Points**:
+
+1. **MemoryStorage::DevicePool**: Holds backend reference and pool handle
+2. **ExecutionParams::gauge_metadata**: Passes periodicity hints to backend
+3. **Backend trait methods**: Pool management and execution
+
+---
+
+## Backend Trait Requirements
+
+The `Backend` trait (defined in `hologram-backends/src/backend.rs`) provides the interface for device execution.
+
+### Required Methods for Memory Manager Integration
+
+```rust
+pub trait Backend: Send + Sync {
+    /// Allocate a device pool of specified size
+    fn allocate_pool(&mut self, size_bytes: usize) -> Result<PoolHandle>;
+
+    /// Copy data from CPU to device pool
+    fn copy_to_pool(
+        &mut self,
+        pool: PoolHandle,
+        offset: usize,
+        data: &[u8],
+    ) -> Result<()>;
+
+    /// Copy data from device pool to CPU
+    fn copy_from_pool(
+        &mut self,
+        pool: PoolHandle,
+        offset: usize,
+        buf: &mut [u8],
+    ) -> Result<()>;
+
+    /// Execute program with parameters (including gauge metadata)
+    fn execute_program_with_params(
+        &mut self,
+        program: &CompiledProgram,
+        params: &ExecutionParams,
+    ) -> Result<()>;
+
+    /// Get pool size (for validation)
+    fn pool_size(&self, pool: PoolHandle) -> Result<usize>;
+
+    /// Deallocate pool (called on drop)
+    fn deallocate_pool(&mut self, pool: PoolHandle) -> Result<()>;
+}
+```
+
+### ExecutionParams Structure
+
+```rust
+pub struct ExecutionParams {
+    /// Launch configuration (grid/block dimensions)
+    pub launch_config: LaunchConfig,
+
+    /// Optional gauge metadata for optimization
+    pub gauge_metadata: Option<GaugeMetadata>,
+}
+
+impl ExecutionParams {
+    /// Create with launch config only
+    pub fn new(launch_config: LaunchConfig) -> Self;
+
+    /// Add gauge metadata
+    pub fn with_gauge(mut self, gauge: GaugeMetadata) -> Self;
+}
+```
+
+### GaugeMetadata Structure
+
+```rust
+pub struct GaugeMetadata {
+    /// Gauge index (0-23 for standard gauges)
+    gauge: u8,
+
+    /// Detected period in data
+    period: u32,
+}
+
+impl GaugeMetadata {
+    /// Create for specific gauge
+    pub fn gauge_23(period: u32) -> Self;
+
+    // ... constructors for each gauge
+}
+```
+
+---
+
+## Device Pool Management
+
+### Pool Lifecycle
+
+```
+1. Allocate
+   ↓
+Backend::allocate_pool(size) -> PoolHandle
+
+2. Use
+   ↓
+MemoryStorage::DevicePool { backend, pool, offset, len }
+   ↓
+EmbeddedBlock::from_device(backend, pool, offset, len, gauge)
+   ↓
+Backend operations (execute_program_with_params, etc.)
+
+3. Deallocate
+   ↓
+Backend::deallocate_pool(pool)  (on drop)
+```
+
+### Creating Device-Resident Storage
+
+```rust
+use hologram_backends::{Backend, PoolHandle};
+use hologram_memory_manager::MemoryStorage;
+use std::sync::{Arc, Mutex};
+
+// Allocate device pool
+let mut backend = create_backend()?; // CPU, Metal, CUDA, etc.
+let pool: PoolHandle = backend.allocate_pool(1024)?;
+
+// Copy data to device
+let data: Vec<u8> = vec![1, 2, 3, 4];
+backend.copy_to_pool(pool, 0, &data)?;
+
+// Create device-resident storage
+let storage = MemoryStorage::DevicePool {
+    backend: Arc::new(Mutex::new(backend)),
+    pool,
+    offset: 0,
+    len: data.len(),
+};
+
+// Storage now represents data on device
+assert!(storage.as_slice().is_none()); // Data not on CPU
+```
+
+### Pool Reuse Pattern (Streaming)
+
+```rust
+// Allocate fixed-size pool once
+let pool = backend.allocate_pool(CHUNK_SIZE)?;
+
+// Stream large data through fixed pool
+for (i, chunk) in large_data.chunks(CHUNK_SIZE).enumerate() {
+    // Reuse same pool for each chunk
+    backend.copy_to_pool(pool, 0, chunk)?;
+
+    // Create storage pointing to pool
+    let storage = MemoryStorage::DevicePool {
+        backend: backend_arc.clone(),
+        pool,
+        offset: 0,
+        len: chunk.len(),
+    };
+
+    // Process chunk
+    process_chunk(storage)?;
+}
+
+// Pool deallocated once at end
+backend.deallocate_pool(pool)?;
+```
+
+**Benefit**: O(1) space for arbitrarily large data streams.
+
+### Multi-Pool Pattern
+
+```rust
+// Allocate multiple pools for different purposes
+let input_pool = backend.allocate_pool(INPUT_SIZE)?;
+let output_pool = backend.allocate_pool(OUTPUT_SIZE)?;
+let temp_pool = backend.allocate_pool(TEMP_SIZE)?;
+
+// Copy input data
+backend.copy_to_pool(input_pool, 0, &input_data)?;
+
+// Execute operation (reads from input_pool, writes to output_pool)
+let params = ExecutionParams::new(launch_config);
+backend.execute_program_with_params(&program, &params)?;
+
+// Read results
+let mut results = vec![0u8; OUTPUT_SIZE];
+backend.copy_from_pool(output_pool, 0, &mut results)?;
+
+// Clean up
+backend.deallocate_pool(input_pool)?;
+backend.deallocate_pool(output_pool)?;
+backend.deallocate_pool(temp_pool)?;
+```
+
+---
+
+## Gauge Metadata Integration
+
+### Passing Gauge Metadata to Backend
+
+The gauge metadata flows from chunking to backend execution:
+
+```rust
+use hologram_backends::{ExecutionParams, LaunchConfig, GaugeMetadata};
+
+// 1. Chunk data (gauge assigned automatically)
+let chunked = stream.chunk(10)?; // 10 primorial levels
+
+// 2. Extract gauge from chunk
+let chunk = &chunked.chunks()[0];
+let gauge = chunk.gauge;         // e.g., 23
+let primorial = chunk.primorial; // e.g., 30
+
+// 3. Create gauge metadata
+let gauge_meta = GaugeMetadata::gauge_23(primorial);
+
+// 4. Create execution params
+let launch_config = LaunchConfig {
+    grid_dim: (1, 1, 1),
+    block_dim: (256, 1, 1),
+};
+let params = ExecutionParams::new(launch_config).with_gauge(gauge_meta);
+
+// 5. Execute with gauge metadata
+backend.execute_program_with_params(&program, &params)?;
+
+// Backend receives:
+// - params.gauge_metadata = Some(GaugeMetadata { gauge: 23, period: 30 })
+// - Can optimize based on period (vectorization hints, prefetch, etc.)
+```
+
+### Backend-Side Gauge Optimization
+
+**Example (conceptual)**:
+
+```rust
+// Inside Backend::execute_program_with_params()
+
+if let Some(gauge_meta) = params.gauge_metadata {
+    match gauge_meta.period {
+        2 => {
+            // Period 2: binary periodicity
+            // Use vectorized 2-wide operations
+            optimize_for_binary_period(program);
+        }
+        6 | 30 => {
+            // Periods 6, 30: common multi-prime periodicity
+            // Use strided access patterns
+            optimize_for_multiprime_period(program, gauge_meta.period);
+        }
+        _ => {
+            // Generic periodicity
+            // Apply general optimizations
+            apply_generic_optimizations(program);
+        }
+    }
+}
+
+// Execute optimized program
+device.execute(program)?;
+```
+
+### Gauge Propagation Example
+
+```rust
+use hologram_memory_manager::{Stream, ComputePipeline, ScalarMulOp};
+use hologram_backends::{ExecutionParams, GaugeMetadata};
+
+// 1. Create and chunk data
+let data: Vec<u8> = vec![...];
+let stream = Stream::new(data);
+let chunked = stream.chunk(10)?;
+
+// 2. Apply operations (gauge preserved)
+let pipeline = ComputePipeline::new().add_op(ScalarMulOp { scale: 2.0 });
+let context = pipeline.execute_on_chunked(chunked)?;
+
+// 3. Extract gauge from embedded blocks
+for block in context.pool.blocks() {
+    let gauge = block.gauge(); // Gauge preserved through pipeline
+
+    // 4. Use gauge for backend execution
+    let meta = GaugeMetadata::from_gauge(gauge, period);
+    let params = ExecutionParams::new(config).with_gauge(meta);
+
+    backend.execute_program_with_params(&program, &params)?;
+}
+```
+
+**Key Insight**: Gauge flows automatically from chunking → operations → pool → backend.
+
+---
+
+## Backend-Specific Patterns
+
+### CPU Backend
+
+**Characteristics**:
+- Pools are system RAM allocations
+- `copy_to_pool` is `memcpy`
+- `execute_program` runs on CPU threads
+
+**Pattern**:
+```rust
+use hologram_backends::CpuBackend;
+
+let mut backend = CpuBackend::new()?;
+
+// Pool is just a CPU buffer
+let pool = backend.allocate_pool(1024)?;
+
+// Copy is memcpy
+backend.copy_to_pool(pool, 0, &data)?;
+
+// Execution is CPU multithreading
+let params = ExecutionParams::new(launch_config);
+backend.execute_program_with_params(&program, &params)?;
+```
+
+**Gauge Optimization**: Thread count, cache optimization based on period.
+
+### Metal Backend (macOS/iOS GPU)
+
+**Characteristics**:
+- Pools are Metal buffers (`MTLBuffer`)
+- `copy_to_pool` is DMA transfer to GPU
+- `execute_program` runs on Metal compute shaders
+
+**Pattern**:
+```rust
+use hologram_backends::MetalBackend;
+
+let mut backend = MetalBackend::new()?;
+
+// Pool is MTLBuffer in VRAM
+let pool = backend.allocate_pool(1024)?;
+
+// Copy is DMA CPU→GPU
+backend.copy_to_pool(pool, 0, &data)?;
+
+// Execution is Metal compute pipeline
+let params = ExecutionParams::new(launch_config);
+backend.execute_program_with_params(&program, &params)?;
+
+// Read back is DMA GPU→CPU
+let mut results = vec![0u8; 1024];
+backend.copy_from_pool(pool, 0, &mut results)?;
+```
+
+**Gauge Optimization**: Threadgroup size, memory access patterns based on period.
+
+### CUDA Backend (NVIDIA GPU)
+
+**Characteristics**:
+- Pools are CUDA device memory (`cudaMalloc`)
+- `copy_to_pool` is `cudaMemcpy` (H2D)
+- `execute_program` launches CUDA kernels
+
+**Pattern**:
+```rust
+use hologram_backends::CudaBackend;
+
+let mut backend = CudaBackend::new()?;
+
+// Pool is CUDA device memory
+let pool = backend.allocate_pool(1024)?;
+
+// Copy is cudaMemcpy (Host to Device)
+backend.copy_to_pool(pool, 0, &data)?;
+
+// Execution is CUDA kernel launch
+let params = ExecutionParams::new(launch_config);
+backend.execute_program_with_params(&program, &params)?;
+
+// Read back is cudaMemcpy (Device to Host)
+let mut results = vec![0u8; 1024];
+backend.copy_from_pool(pool, 0, &mut results)?;
+```
+
+**Gauge Optimization**: Block dimensions, shared memory usage based on period.
+
+---
+
+## WASM Backend Details
+
+The WASM backend requires special handling due to browser sandboxing and linear memory constraints.
+
+### Linear Memory Model
+
+**Characteristics**:
+- WASM has a single contiguous linear memory (`WebAssembly.Memory`)
+- Memory is managed by the WASM runtime
+- Access from JavaScript via `ArrayBuffer` views
+
+**Pool Representation**:
+```rust
+// WASM backend stores pools as offsets into linear memory
+pub struct WasmPoolHandle {
+    offset: usize,  // Offset in linear memory
+    size: usize,    // Size in bytes
+}
+```
+
+### WASM Backend Implementation
+
+```rust
+use hologram_backends::WasmBackend;
+
+// Create WASM backend (initializes linear memory)
+let mut backend = WasmBackend::new()?;
+
+// Allocate pool (reserves range in linear memory)
+let pool = backend.allocate_pool(1024)?;
+// pool.offset = 0x1000 (example)
+// pool.size = 1024
+
+// Copy to pool (writes to linear memory at offset)
+backend.copy_to_pool(pool, 0, &data)?;
+// Writes data to linear_memory[0x1000..0x1400]
+
+// Execute program (WASM function call)
+let params = ExecutionParams::new(launch_config);
+backend.execute_program_with_params(&program, &params)?;
+// Calls WASM function: process_data(pool.offset, pool.size)
+
+// Copy from pool (reads from linear memory)
+let mut results = vec![0u8; 1024];
+backend.copy_from_pool(pool, 0, &mut results)?;
+// Reads from linear_memory[0x1000..0x1400]
+```
+
+### WASM Memory Growth
+
+**Challenge**: WASM linear memory can grow but not shrink.
+
+**Solution**: Pool allocator within linear memory.
+
+```rust
+// WasmBackend maintains pool allocator
+pub struct WasmBackend {
+    linear_memory: WebAssemblyMemory,
+    allocator: PoolAllocator, // Manages free ranges
+}
+
+impl Backend for WasmBackend {
+    fn allocate_pool(&mut self, size: usize) -> Result<PoolHandle> {
+        // Try to allocate from free ranges
+        if let Some(offset) = self.allocator.try_allocate(size) {
+            return Ok(WasmPoolHandle { offset, size });
+        }
+
+        // Need to grow linear memory
+        let current_size = self.linear_memory.size();
+        let new_size = current_size + size;
+        self.linear_memory.grow(new_size)?;
+
+        // Allocate from newly grown region
+        let offset = current_size;
+        Ok(WasmPoolHandle { offset, size })
+    }
+
+    fn deallocate_pool(&mut self, pool: PoolHandle) -> Result<()> {
+        // Mark range as free for reuse
+        self.allocator.deallocate(pool.offset, pool.size);
+        Ok(())
+    }
+}
+```
+
+### WASM JavaScript Interop
+
+**From Rust (hologram-memory-manager)**:
+```rust
+// Create WASM backend
+let backend = WasmBackend::new()?;
+let pool = backend.allocate_pool(1024)?;
+backend.copy_to_pool(pool, 0, &data)?;
+```
+
+**Inside WasmBackend (calls JavaScript)**:
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    fn js_execute_on_pool(offset: usize, size: usize);
+}
+
+impl Backend for WasmBackend {
+    fn execute_program_with_params(&mut self, program: &CompiledProgram, params: &ExecutionParams) -> Result<()> {
+        // Call JavaScript function with pool offset/size
+        unsafe {
+            js_execute_on_pool(pool.offset, pool.size);
+        }
+        Ok(())
+    }
+}
+```
+
+**JavaScript Side**:
+```javascript
+// Access WASM linear memory
+const memory = wasmInstance.exports.memory;
+const buffer = new Uint8Array(memory.buffer);
+
+// Execute on pool
+function js_execute_on_pool(offset, size) {
+    // Access pool data
+    const poolData = buffer.subarray(offset, offset + size);
+
+    // Process data (WebGPU, Web Workers, etc.)
+    processWithWebGPU(poolData);
+}
+```
+
+---
+
+## Performance Considerations
+
+### When to Use Device Pools
+
+**Use CpuShared (Arc) when**:
+- Data fits in system RAM
+- Operations are CPU-bound
+- Need parallel CPU access (Rayon)
+- Minimal latency required (<1 ns access)
+
+**Use DevicePool when**:
+- Data is large (GB+)
+- Operations are compute-bound (GPU-accelerated)
+- Willing to pay transfer cost for compute speedup
+- Streaming through fixed pool (O(1) space)
+
+### Transfer Cost Analysis
+
+**CPU↔GPU Transfer Cost** (typical):
+- PCIe bandwidth: ~16 GB/s (PCIe 4.0 x16)
+- Latency: ~10-100 µs per transfer
+- **Rule of thumb**: Transfer cost must be < compute speedup
+
+**Example**:
+```
+Operation: Matrix multiply (1024x1024)
+- CPU time: 100 ms
+- GPU time: 1 ms
+- Transfer time: 2 MB @ 16 GB/s = 125 µs
+
+Total GPU time: 1 ms + 0.125 ms = 1.125 ms
+Speedup: 100 ms / 1.125 ms = 89×
+```
+
+**Verdict**: Use GPU (even with transfer cost).
+
+### Gauge Optimization Impact
+
+**Potential optimizations**:
+
+| Period | Optimization | Expected Speedup |
+|--------|--------------|------------------|
+| 2 | Vectorized binary ops | 2-4× |
+| 6, 30 | Strided access | 1.5-2× |
+| Prime | Prime factorization hints | 1.2-1.5× |
+
+**Backend-dependent**: Each backend decides how to use gauge metadata.
+
+---
+
+## Summary
+
+Backend integration with hologram-memory-manager provides:
+
+1. **Unified Interface**: Same code works across CPU, Metal, CUDA, WASM
+2. **Device Pools**: Zero-copy on device, streaming through fixed pools
+3. **Gauge Metadata**: Periodicity hints for backend optimizations
+4. **Type Safety**: Rust prevents misuse of device handles
+5. **Performance**: O(1) space streaming, device-resident computation
+
+The `MemoryStorage::DevicePool` variant seamlessly integrates with hologram-backends, enabling device-accelerated workloads while maintaining the zero-copy guarantee within each storage type.
+
+**For architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).**
+**For streaming patterns, see [STREAMING.md](STREAMING.md).**
+**For implementation details, see [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).**

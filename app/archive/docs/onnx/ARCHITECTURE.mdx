@@ -1,0 +1,1038 @@
+---
+title: "Hologram ONNX Runtime Architecture"
+description: "Hologram ONNX Runtime Architecture documentation"
+---
+
+# Hologram ONNX Runtime Architecture
+
+**Status**: Design Document
+**Target**: hologram-sdk/rust/hologram-onnx
+**Purpose**: Enable execution of ONNX models on hologram's canonical compilation architecture
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Design Philosophy](#design-philosophy)
+- [Architecture Layers](#architecture-layers)
+- [Core Components](#core-components)
+- [Execution Model](#execution-model)
+- [Type System](#type-system)
+- [Memory Management](#memory-management)
+- [Integration with Hologram](#integration-with-hologram)
+- [Performance Considerations](#performance-considerations)
+
+---
+
+## Overview
+
+The hologram ONNX runtime provides a complete implementation of the ONNX specification optimized for hologram's canonical compilation model. Unlike traditional ONNX runtimes that focus on operator-level optimization, hologram-onnx leverages:
+
+1. **Canonical Compilation**: ONNX operators compile to canonical generator sequences with 75% operation reduction
+2. **Multi-Backend Execution**: Seamless deployment across CPU, WebGPU, and future GPU backends
+3. **Build-Time Optimization**: Graph-level canonicalization reduces runtime overhead
+4. **Zero CPU Fallbacks**: All operations execute on the target backend (no CPU fallback paths)
+
+### Key Differentiators
+
+| Feature           | ONNX Runtime                      | Hologram ONNX                            |
+| ----------------- | --------------------------------- | ---------------------------------------- |
+| Backend           | CPU, CUDA, DirectML, TensorRT     | CPU, WebGPU, WASM, future CUDA/Metal     |
+| Optimization      | Operator fusion, constant folding | Canonical compilation (75% op reduction) |
+| Browser Support   | WebGL (limited)                   | WebGPU (native, high-performance)        |
+| Memory Model      | Traditional allocation            | 96-class geometric system                |
+| Operator Dispatch | Dynamic runtime dispatch          | Precompiled ISA programs                 |
+| Fallback Strategy | CPU fallback for missing ops      | No fallbacks (all ops on backend)        |
+
+---
+
+## Design Philosophy
+
+### 1. Leveraging Existing Primitives
+
+Hologram-core already implements 85% of operators needed for common ONNX models (especially image generation):
+
+- **Arithmetic**: add, sub, mul, div, min, max, abs, neg
+- **Activations**: sigmoid, tanh, gelu, softmax, relu
+- **Linear Algebra**: gemm (matrix multiply), matvec
+- **Convolution**: conv2d with padding, stride, dilation
+- **Normalization**: layer_norm, group_norm
+- **Reductions**: sum, min, max
+- **Memory**: copy, fill
+
+**Design Principle**: Map ONNX operators to existing hologram-core/hologram-ai operations whenever possible. Only implement new operators when necessary.
+
+### 2. Graph-Level Optimization
+
+ONNX graphs undergo optimization before execution:
+
+```
+ONNX Model (.onnx)
+    ↓ Parse protobuf
+Raw ONNX Graph (nodes, edges, initializers)
+    ↓ Optimize
+Optimized Graph (fused ops, constant folding, dead code elimination)
+    ↓ Compile
+Execution Plan (topologically sorted, shape-inferred)
+    ↓ Execute
+Operator Dispatch → hologram-core → Backend ISA
+```
+
+### 3. Type-Generic Execution
+
+Support multiple precision levels:
+
+- **FP32**: Full precision (default)
+- **FP16**: Half precision (memory-efficient)
+- **INT8**: Quantized inference (future)
+
+The runtime uses Rust generics and hologram's `Pod` trait to support type-generic execution without code duplication.
+
+### 4. Dynamic Shape Inference
+
+ONNX models support dynamic shapes (variable batch size, sequence length). The runtime:
+
+1. **Shape Inference Pass**: Propagate shapes forward through the graph
+2. **Dynamic Allocation**: Allocate buffers based on inferred shapes
+3. **Validation**: Ensure shape compatibility at each operation
+4. **Caching**: Cache execution plans for common shape configurations
+
+### 5. Three-Stage Compilation Strategy
+
+**Core Principle**: Maximize compile-time optimization, minimize runtime overhead.
+
+Hologram ONNX maintains the project's philosophy of moving computation to compile-time through a three-stage compilation model:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              HOLOGRAM ONNX COMPILATION                  │
+│                                                         │
+│  ⚙️ BUILD TIME (cargo build) - ZERO RUNTIME COST        │
+│  ├─ Generate protobuf bindings from onnx.proto3         │
+│  ├─ Compile operator ISA programs ← 75% reduction       │
+│  │   • ops::math::vector_add → Canonical ISA            │
+│  │   • ops::conv::conv2d → Canonical ISA                │
+│  │   • All operators precompiled                        │
+│  └─ Generate operator dispatch table                    │
+│                                                         │
+│  ──────────────────────────────────────────────────     │
+│                                                         │
+│  📦 LOAD TIME (Model::load()) - ONE TIME PER MODEL       │
+│  ├─ Parse ONNX protobuf (50-200ms)                      │
+│  ├─ Build Graph IR                                      │
+│  ├─ Run optimization passes                             │
+│  │   ├─ Constant folding                                │
+│  │   ├─ Operator fusion (Conv+BN+ReLU → Fused)          │
+│  │   ├─ Dead code elimination                           │
+│  │   └─ Identity elimination                            │
+│  ├─ Compile execution plan                              │
+│  │   ├─ Topological sort (node execution order)         │
+│  │   ├─ Shape inference (static shapes)                 │
+│  │   ├─ Lifetime analysis (memory optimization)         │
+│  │   └─ Operator dispatch table                         │
+│  └─ CACHE compiled plan (serialize to disk)             │
+│                                                         │
+│  ──────────────────────────────────────────────────     │
+│                                                         │
+│  🏃 INFERENCE TIME (executor.run()) - MINIMIZE THIS      │
+│  ├─ Load cached execution plan (if available)           │
+│  ├─ For each node (in precomputed order):               │
+│  │   ├─ Fetch inputs from cache (~100ns)                │
+│  │   ├─ Execute precompiled ISA (~200ns)                │
+│  │   ├─ Store outputs (~100ns)                          │
+│  │   └─ Free dead values (lifetime-based)               │
+│  └─ Return outputs                                      │
+│                                                         │
+│  Total per-node overhead: ~400ns                        │
+│  (vs 75% fewer operations from canonicalization)        │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### Execution Plan Caching
+
+To minimize repeated load-time overhead, execution plans can be serialized and cached:
+
+```rust
+/// Precompiled execution plan (cached to disk)
+pub struct CompiledExecutionPlan {
+    /// Precomputed execution order (topological sort)
+    execution_order: Vec<usize>,
+
+    /// Precomputed shapes (for static shapes)
+    value_shapes: HashMap<String, Vec<usize>>,
+
+    /// Operator dispatch table (no runtime lookup)
+    operator_calls: Vec<PrecompiledOperatorCall>,
+
+    /// Memory allocation plan (no runtime computation)
+    allocation_plan: MemoryPlan,
+}
+
+// Usage:
+// First time: compile and cache
+let model = OnnxModel::load("unet.onnx")?;
+let plan = model.compile()?;
+plan.save("unet.compiled")?;  // Serialize to disk
+
+// Subsequent times: load precompiled plan
+let plan = CompiledExecutionPlan::load("unet.compiled")?;
+let executor = OnnxExecutor::from_plan(plan)?;
+executor.run(inputs)?;  // Zero compilation overhead
+```
+
+#### Standalone Compiler Binary
+
+For production deployments, a standalone compiler binary can be built to pre-compile ONNX models at build time or deployment time, moving even more processing from runtime to compile-time:
+
+```bash
+# Build the compiler binary
+cargo build --release --bin hologram-onnx-compile
+
+# Pre-compile an ONNX model
+./target/release/hologram-onnx-compile \
+    --input model.onnx \
+    --output model.compiled \
+    --optimize-level 2
+```
+
+**Compiler Binary Features**:
+
+- **Graph Optimization**: Constant folding, operator fusion, dead code elimination
+- **Static Shape Analysis**: Pre-compute all shapes when possible
+- **Memory Planning**: Pre-allocate memory layout (no runtime allocation)
+- **ISA Compilation**: Compile all operators to canonical ISA
+- **Execution Order**: Pre-compute topological sort
+- **Serialization**: Save optimized plan in compact binary format
+
+**Deployment Workflow**:
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   model.onnx    │ ──> │ hologram-onnx-   │ ──> │ model.compiled  │
+│  (ONNX format)  │     │    compile       │     │  (optimized)    │
+└─────────────────┘     │                  │     └─────────────────┘
+                        │ • Parse protobuf │              │
+                        │ • Optimize graph │              │
+                        │ • Compile ISA    │              ▼
+                        │ • Serialize plan │     ┌─────────────────┐
+                        └──────────────────┘     │  Application    │
+                                                 │  (runtime)      │
+                                                 │                 │
+                                                 │ executor.load   │
+                                                 │ executor.run    │
+                                                 └─────────────────┘
+```
+
+**Benefits**:
+
+- **Zero Load-Time Overhead**: Skip parsing, optimization, and compilation
+- **Smaller Binary Size**: Only include runtime, not compiler
+- **Faster Startup**: Applications start instantly
+- **Build-Time Validation**: Catch errors during build, not at runtime
+- **CI/CD Integration**: Compile models as part of build pipeline
+
+**Implementation**:
+
+```rust
+// In hologram-onnx/src/bin/compile.rs
+use hologram_onnx::{OnnxModel, OptimizationLevel};
+
+fn main() -> anyhow::Result<()> {
+    let model = OnnxModel::load("model.onnx")?;
+
+    // Apply optimization passes
+    let optimized = model.optimize(OptimizationLevel::O2)?;
+
+    // Compile to execution plan
+    let plan = optimized.compile()?;
+
+    // Serialize to binary format
+    plan.save_compressed("model.compiled")?;
+
+    println!("Compiled model saved to model.compiled");
+    println!("Original size: {} bytes", original_size);
+    println!("Compiled size: {} bytes", compiled_size);
+    println!("Compression ratio: {:.1}x", ratio);
+
+    Ok(())
+}
+```
+
+This approach enables **maximum runtime performance** by moving all possible processing to compile-time, aligning with hologram's philosophy of build-time optimization.
+
+#### Overhead Comparison
+
+**Without Execution Plan Caching** (per operator):
+
+```
+├─ Operator lookup: 500ns          ← Can eliminate
+├─ Attribute parsing: 200ns        ← Can eliminate
+├─ Shape inference: 100ns          ← Can eliminate (static shapes)
+├─ ISA execution: 200ns            ← Actual work (cannot eliminate)
+└─ Value cache: 100ns              ← Minimal (O(1) lookup)
+Total: 1,100ns per operator
+```
+
+**With Execution Plan Caching** (per operator):
+
+```
+├─ Direct ISA call: 200ns          ← Precompiled
+├─ Value cache: 100ns              ← Direct index access
+└─ Memory access: 50ns             ← Hardware latency
+Total: 350ns per operator (3× faster)
+```
+
+**For Stable Diffusion U-Net** (500 operators per inference):
+
+- Without caching: 500 × 1,100ns = **550μs overhead**
+- With caching: 500 × 350ns = **175μs overhead**
+- **Savings: 375μs (68% reduction)**
+
+#### Key Design Decisions
+
+1. **Operators Compiled at Build Time**: All hologram-core operations are precompiled to canonical ISA with 75% operation reduction. This is never repeated at runtime.
+
+2. **Graph Optimization at Load Time**: Optimization passes (fusion, constant folding) run once when loading the model and can be cached.
+
+3. **Pure Execution at Inference Time**: Inference only executes precompiled ISA programs with minimal dispatch overhead (~400ns per node).
+
+4. **Static Shape Specialization**: For models with static input shapes, shape inference runs once at load time, not per inference.
+
+5. **Lifetime-Based Memory Management**: Memory allocation and deallocation plans are computed once and reused.
+
+---
+
+## Architecture Layers
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   User Application                     │
+│            (Rust, WASM, Python via FFI)                │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│              hologram-onnx (Public API)                │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  OnnxModel::load(path) -> Model                  │  │
+│  │  Model::run(inputs) -> outputs                   │  │
+│  │  Model::get_input_names() -> Vec<String>         │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│           Graph Representation (IR Layer)              │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  Graph { nodes, edges, inputs, outputs }         │  │
+│  │  Node { op_type, inputs, outputs, attributes }   │  │
+│  │  ValueInfo { name, shape, dtype }                │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│           Graph Optimization Passes                    │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  • Constant Folding                              │  │
+│  │  • Operator Fusion (Conv+BatchNorm+ReLU)         │  │
+│  │  • Dead Code Elimination                         │  │
+│  │  • Shape Inference                               │  │
+│  │  • Type Propagation                              │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│              Operator Dispatch Layer                   │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  dispatch_op(node, inputs) -> outputs            │  │
+│  │    ↓ pattern match on op_type                    │  │
+│  │  "Conv" -> ops::conv::conv2d(...)                │  │
+│  │  "MatMul" -> ops::linalg::gemm(...)              │  │
+│  │  "Softmax" -> ops::activation::softmax(...)      │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│         hologram-ai (Building Blocks)                  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  Conv2d, Linear, MultiHeadAttention, etc.        │  │
+│  │  (Reusable for both ONNX and native models)     │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│          hologram-core (Atomic Operations)             │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  ops::math, ops::linalg, ops::activation, etc.   │  │
+│  │  (Precompiled to canonical ISA programs)         │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌────────────────────────────────────────────────────────┐
+│         hologram-backends (Execution)                  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  CpuBackend, WebGpuBackend, CudaBackend, etc.    │  │
+│  │  (ISA program execution on hardware)             │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Core Components
+
+### 1. Protobuf Parser (`proto` module)
+
+**Responsibility**: Parse `.onnx` files (Protocol Buffer format) into an intermediate representation.
+
+```rust
+pub mod proto {
+    use prost::Message;
+
+    /// Parse an ONNX model from bytes
+    pub fn parse_model(bytes: &[u8]) -> Result<onnx::ModelProto> {
+        onnx::ModelProto::decode(bytes)
+            .map_err(|e| OnnxError::ParseError(e.to_string()))
+    }
+
+    /// Parse an ONNX model from file
+    pub fn load_model(path: impl AsRef<Path>) -> Result<onnx::ModelProto> {
+        let bytes = std::fs::read(path)?;
+        parse_model(&bytes)
+    }
+}
+```
+
+**Dependencies**:
+
+- `prost` - Protocol buffer implementation for Rust
+- `prost-types` - Well-known protobuf types
+- Generated code from ONNX protobuf schema
+
+**Generated Files** (from build.rs):
+
+- `src/proto/onnx.rs` - Generated from onnx.proto3
+
+### 2. Graph IR (`graph` module)
+
+**Responsibility**: Intermediate representation of the ONNX computation graph.
+
+```rust
+pub struct Graph {
+    pub name: String,
+    pub nodes: Vec<Node>,
+    pub inputs: Vec<ValueInfo>,
+    pub outputs: Vec<ValueInfo>,
+    pub initializers: HashMap<String, Tensor>,
+    pub value_info: HashMap<String, ValueInfo>,
+}
+
+pub struct Node {
+    pub name: String,
+    pub op_type: String,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub attributes: HashMap<String, AttributeValue>,
+}
+
+pub struct ValueInfo {
+    pub name: String,
+    pub shape: Option<Vec<i64>>,  // None for dynamic dimensions
+    pub dtype: DataType,
+}
+
+pub enum AttributeValue {
+    Int(i64),
+    Float(f32),
+    String(String),
+    Tensor(Tensor),
+    Ints(Vec<i64>),
+    Floats(Vec<f32>),
+    Strings(Vec<String>),
+}
+
+pub enum DataType {
+    Float32,
+    Float16,
+    Int8,
+    Int32,
+    Int64,
+    Bool,
+}
+```
+
+**Key Methods**:
+
+```rust
+impl Graph {
+    /// Parse from ONNX ModelProto
+    pub fn from_model_proto(proto: onnx::ModelProto) -> Result<Self>;
+
+    /// Topological sort of nodes
+    pub fn topological_sort(&self) -> Result<Vec<&Node>>;
+
+    /// Infer shapes for all intermediate values
+    pub fn infer_shapes(&mut self) -> Result<()>;
+
+    /// Get node by output name
+    pub fn get_producer(&self, value_name: &str) -> Option<&Node>;
+}
+```
+
+### 3. Graph Optimizer (`optimizer` module)
+
+**Responsibility**: Apply graph-level optimizations before execution.
+
+```rust
+pub trait OptimizationPass {
+    fn run(&self, graph: &mut Graph) -> Result<bool>;  // Returns true if modified
+}
+
+// Example passes:
+pub struct ConstantFoldingPass;
+pub struct OperatorFusionPass;
+pub struct DeadCodeEliminationPass;
+pub struct ShapeInferencePass;
+
+pub struct Optimizer {
+    passes: Vec<Box<dyn OptimizationPass>>,
+}
+
+impl Optimizer {
+    pub fn optimize(&self, graph: &mut Graph) -> Result<()> {
+        let mut modified = true;
+        while modified {
+            modified = false;
+            for pass in &self.passes {
+                modified |= pass.run(graph)?;
+            }
+        }
+        Ok(())
+    }
+}
+```
+
+**Common Optimizations**:
+
+1. **Constant Folding**: Evaluate constant operations at compile time
+2. **Operator Fusion**: Combine sequences like `Conv → BatchNorm → ReLU` into single fused operation
+3. **Dead Code Elimination**: Remove unused nodes
+4. **Identity Elimination**: Remove no-op operations
+5. **Reshape Canonicalization**: Simplify reshape chains
+
+### 4. Executor (`executor` module)
+
+**Responsibility**: Execute the optimized graph on hologram backends.
+
+```rust
+pub struct OnnxExecutor {
+    graph: Graph,
+    exec: hologram_core::Executor,
+    execution_plan: Vec<ExecutionStep>,
+    value_cache: HashMap<String, Box<dyn Any>>,  // Intermediate values
+}
+
+pub struct ExecutionStep {
+    pub node: Node,
+    pub op: Box<dyn OnnxOperator>,
+}
+
+impl OnnxExecutor {
+    pub fn new(graph: Graph, backend: BackendType) -> Result<Self>;
+
+    pub fn run(&mut self, inputs: HashMap<String, Tensor>) -> Result<HashMap<String, Tensor>>;
+
+    fn execute_node(&mut self, node: &Node) -> Result<()>;
+}
+```
+
+**Execution Flow**:
+
+```rust
+pub fn run(&mut self, inputs: HashMap<String, Tensor>) -> Result<HashMap<String, Tensor>> {
+    // 1. Initialize value cache with inputs and initializers
+    self.value_cache.clear();
+    for (name, tensor) in inputs {
+        self.value_cache.insert(name, Box::new(tensor));
+    }
+    for (name, tensor) in &self.graph.initializers {
+        self.value_cache.insert(name.clone(), Box::new(tensor.clone()));
+    }
+
+    // 2. Execute nodes in topological order
+    for step in &self.execution_plan {
+        self.execute_node(&step.node)?;
+    }
+
+    // 3. Extract outputs
+    let mut outputs = HashMap::new();
+    for output_info in &self.graph.outputs {
+        let tensor = self.value_cache.get(&output_info.name)
+            .ok_or(OnnxError::MissingValue(output_info.name.clone()))?;
+        outputs.insert(output_info.name.clone(), tensor.downcast_ref::<Tensor>().unwrap().clone());
+    }
+
+    Ok(outputs)
+}
+```
+
+### 5. Operator Registry (`ops` module)
+
+**Responsibility**: Dispatch ONNX operators to hologram implementations.
+
+```rust
+pub trait OnnxOperator: Send + Sync {
+    fn execute(
+        &self,
+        exec: &hologram_core::Executor,
+        inputs: &[&Tensor],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<Tensor>>;
+
+    fn infer_shape(
+        &self,
+        input_shapes: &[&[i64]],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<Vec<i64>>>;
+}
+
+pub struct OperatorRegistry {
+    ops: HashMap<String, Box<dyn OnnxOperator>>,
+}
+
+impl OperatorRegistry {
+    pub fn register(&mut self, op_type: String, op: Box<dyn OnnxOperator>);
+
+    pub fn get(&self, op_type: &str) -> Option<&dyn OnnxOperator>;
+}
+```
+
+**Example Operator Implementation**:
+
+```rust
+pub struct ConvOperator;
+
+impl OnnxOperator for ConvOperator {
+    fn execute(
+        &self,
+        exec: &hologram_core::Executor,
+        inputs: &[&Tensor],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<Tensor>> {
+        let input = inputs[0];
+        let weight = inputs[1];
+        let bias = inputs.get(2);
+
+        let kernel_shape = attributes.get("kernel_shape")?;
+        let strides = attributes.get("strides").unwrap_or(&vec![1, 1]);
+        let pads = attributes.get("pads").unwrap_or(&vec![0, 0, 0, 0]);
+
+        // Dispatch to hologram-core
+        let output = hologram_ai::blocks::conv::Conv2d::new(
+            weight.shape(),
+            kernel_shape,
+            strides,
+            pads,
+        ).forward(exec, input)?;
+
+        // Add bias if present
+        if let Some(bias) = bias {
+            ops::math::broadcast_add_nchw(exec, &output, bias, &mut output)?;
+        }
+
+        Ok(vec![output])
+    }
+
+    fn infer_shape(
+        &self,
+        input_shapes: &[&[i64]],
+        attributes: &HashMap<String, AttributeValue>,
+    ) -> Result<Vec<Vec<i64>>> {
+        // Calculate output shape: (N, C_out, H_out, W_out)
+        let [n, _, h, w] = input_shapes[0];
+        let [c_out, _, kh, kw] = input_shapes[1];  // weight shape
+        let strides = attributes.get("strides")?;
+        let pads = attributes.get("pads")?;
+
+        let h_out = (h + pads[0] + pads[2] - kh) / strides[0] + 1;
+        let w_out = (w + pads[1] + pads[3] - kw) / strides[1] + 1;
+
+        Ok(vec![vec![n, c_out, h_out, w_out]])
+    }
+}
+```
+
+### 6. Type System (`types` module)
+
+**Responsibility**: Convert between ONNX types and hologram types.
+
+```rust
+pub enum OnnxType {
+    Float32,
+    Float16,
+    Int8,
+    Int32,
+    Int64,
+    Bool,
+}
+
+impl OnnxType {
+    pub fn from_onnx_proto(proto: i32) -> Result<Self>;
+    pub fn to_rust_type(&self) -> TypeId;
+    pub fn element_size(&self) -> usize;
+}
+
+pub struct OnnxTensor {
+    data: hologram_core::Buffer<u8>,
+    shape: Vec<usize>,
+    dtype: OnnxType,
+}
+
+impl OnnxTensor {
+    pub fn as_buffer<T: bytemuck::Pod>(&self) -> Result<&hologram_core::Buffer<T>>;
+    pub fn to_f32(&self) -> Result<hologram_core::Tensor<f32>>;
+    pub fn from_hologram<T: bytemuck::Pod>(tensor: hologram_core::Tensor<T>) -> Self;
+}
+```
+
+### 7. Weight Loader (`weights` module)
+
+**Responsibility**: Load weights from ONNX format and SafeTensors.
+
+```rust
+pub trait WeightLoader {
+    fn load(&self, path: impl AsRef<Path>) -> Result<HashMap<String, Tensor>>;
+}
+
+pub struct OnnxWeightLoader;
+
+impl WeightLoader for OnnxWeightLoader {
+    fn load(&self, path: impl AsRef<Path>) -> Result<HashMap<String, Tensor>> {
+        let model = proto::load_model(path)?;
+        let mut weights = HashMap::new();
+
+        for initializer in model.graph.initializer {
+            let tensor = convert_onnx_tensor(&initializer)?;
+            weights.insert(initializer.name, tensor);
+        }
+
+        Ok(weights)
+    }
+}
+
+pub struct SafeTensorsWeightLoader;
+
+impl WeightLoader for SafeTensorsWeightLoader {
+    fn load(&self, path: impl AsRef<Path>) -> Result<HashMap<String, Tensor>> {
+        // Reuse existing hologram-ai SafeTensors parser
+        hologram_ai::weights::safetensors::load(path)
+    }
+}
+```
+
+**Design Decision**: Prefer SafeTensors for weight loading when available, as it:
+
+- Parses faster (zero-copy deserialization)
+- Is safer (no arbitrary code execution)
+- Has smaller file size
+- Is browser-compatible (important for WASM)
+
+---
+
+## Execution Model
+
+### Single-Threaded Execution (Phase 1)
+
+```
+┌─────────────────────────────────────────────┐
+│          OnnxExecutor::run()                │
+│                                             │
+│  for node in topological_order:             │
+│    1. Fetch inputs from value_cache         │
+│    2. Dispatch to operator                  │
+│    3. Execute on backend                    │
+│    4. Store outputs in value_cache          │
+└─────────────────────────────────────────────┘
+```
+
+**Characteristics**:
+
+- Simple, predictable execution
+- Easy to debug
+- Suitable for small models (<100 nodes)
+
+### Parallel Execution (Phase 2)
+
+```
+┌─────────────────────────────────────────────┐
+│        Parallel Graph Execution             │
+│                                             │
+│  Level 0: [Input, Const1, Const2]          │
+│            ↓       ↓       ↓                │
+│  Level 1: [Conv1,  Conv2]  (parallel)       │
+│            ↓       ↓                        │
+│  Level 2: [Concat]                          │
+│            ↓                                │
+│  Level 3: [BatchNorm, Add] (parallel)       │
+└─────────────────────────────────────────────┘
+```
+
+**Characteristics**:
+
+- Level-based parallelism (execute independent nodes concurrently)
+- Uses Rayon for thread pool management
+- Suitable for large models (>100 nodes)
+
+### Memory Management
+
+**Value Lifetime Analysis**:
+
+```rust
+pub struct ValueLifetime {
+    pub first_use: usize,   // Node index
+    pub last_use: usize,    // Node index
+}
+
+impl OnnxExecutor {
+    fn analyze_lifetimes(&self) -> HashMap<String, ValueLifetime>;
+
+    fn should_free(&self, value_name: &str, current_node: usize) -> bool {
+        self.lifetimes.get(value_name)
+            .map(|lt| current_node >= lt.last_use)
+            .unwrap_or(false)
+    }
+}
+```
+
+**Memory Reuse**: After a value's last use, its buffer is freed and can be reused for future allocations.
+
+---
+
+## Type System
+
+### Type Conversion Matrix
+
+| ONNX Type | Rust Type | hologram-core Type | Size (bytes) |
+| --------- | --------- | ------------------ | ------------ |
+| FLOAT     | f32       | `Buffer<f32>`      | 4            |
+| FLOAT16   | half::f16 | `Buffer<f16>`      | 2            |
+| INT8      | i8        | `Buffer<i8>`       | 1            |
+| INT32     | i32       | `Buffer<i32>`      | 4            |
+| INT64     | i64       | `Buffer<i64>`      | 8            |
+| BOOL      | bool      | `Buffer<u8>`       | 1            |
+
+### Type Inference
+
+```rust
+impl Graph {
+    pub fn infer_types(&mut self) -> Result<()> {
+        // Forward pass: propagate types from inputs to outputs
+        for node in self.topological_sort()? {
+            let input_types: Vec<DataType> = node.inputs.iter()
+                .map(|name| self.value_info[name].dtype)
+                .collect();
+
+            let output_types = self.operator_registry
+                .get(&node.op_type)
+                .ok_or(OnnxError::UnknownOperator(node.op_type.clone()))?
+                .infer_type(&input_types, &node.attributes)?;
+
+            for (output_name, dtype) in node.outputs.iter().zip(output_types) {
+                self.value_info.get_mut(output_name).unwrap().dtype = dtype;
+            }
+        }
+
+        Ok(())
+    }
+}
+```
+
+---
+
+## Memory Management
+
+### Integration with hologram-memory-manager
+
+The ONNX runtime uses hologram's 96-class memory system:
+
+```rust
+pub struct OnnxExecutor {
+    exec: hologram_core::Executor,  // Manages 96-class allocation
+    allocations: HashMap<String, Allocation>,
+}
+
+pub struct Allocation {
+    buffer: hologram_core::Buffer<u8>,
+    shape: Vec<usize>,
+    dtype: DataType,
+}
+
+impl OnnxExecutor {
+    fn allocate(&mut self, name: &str, shape: &[usize], dtype: DataType) -> Result<()> {
+        let size = shape.iter().product::<usize>() * dtype.size();
+        let buffer = self.exec.allocate_bytes(size)?;
+
+        self.allocations.insert(name.to_string(), Allocation {
+            buffer,
+            shape: shape.to_vec(),
+            dtype,
+        });
+
+        Ok(())
+    }
+}
+```
+
+### Memory Optimization Strategies
+
+1. **In-Place Operations**: Where possible, reuse input buffers for outputs
+2. **Buffer Pooling**: Maintain a pool of frequently-used buffer sizes
+3. **Lifetime Analysis**: Free buffers immediately after last use
+4. **Lazy Allocation**: Only allocate when value is first used
+
+---
+
+## Integration with Hologram
+
+### Dependency Graph
+
+```
+hologram-onnx
+    ├── hologram-ai (building blocks)
+    │   └── hologram-core (operations)
+    │       ├── hologram-backends (execution)
+    │       ├── hologram-compiler (canonicalization)
+    │       └── hologram-memory-manager (allocation)
+    ├── prost (protobuf)
+    └── half (FP16 support)
+```
+
+### Operator Mapping Strategy
+
+**Tier 1: Direct Mapping** (no wrapper needed)
+
+```rust
+"Add" → ops::math::vector_add
+"Mul" → ops::math::vector_mul
+"Relu" → ops::math::relu
+```
+
+**Tier 2: Attribute Translation** (simple wrapper)
+
+```rust
+"Conv" → ops::conv::conv2d (extract padding, stride from attributes)
+"Softmax" → ops::activation::softmax (handle axis attribute)
+```
+
+**Tier 3: Composition** (combine multiple ops)
+
+```rust
+"BatchNormalization" → {
+    // (x - mean) / sqrt(var + epsilon) * scale + bias
+    ops::math::sub(x, mean)
+    ops::math::div(result, sqrt_var)
+    ops::math::mul(result, scale)
+    ops::math::add(result, bias)
+}
+```
+
+**Tier 4: New Implementation** (not in hologram-core)
+
+```rust
+"Concat" → implement new operator in hologram-core
+"Gather" → implement new operator in hologram-core
+```
+
+---
+
+## Performance Considerations
+
+### Expected Performance Characteristics
+
+**Model Loading**:
+
+- ONNX protobuf parsing: ~50-200ms for 100MB model
+- SafeTensors parsing: ~5-20ms (zero-copy)
+- Graph optimization: ~10-50ms
+
+**Execution Overhead**:
+
+- Operator dispatch: ~100-500ns per node
+- Shape inference (dynamic): ~50-200ns per node
+- Memory allocation: ~1-10μs per buffer (96-class system)
+
+**Operator Performance**:
+
+- Same as native hologram-core (no overhead)
+- SIMD fast path: 881-4,367× faster for small tensors (n ≤ 262,144)
+- WebGPU acceleration for large tensors
+
+### Optimization Opportunities
+
+1. **Operator Fusion**: Fuse sequences like Conv→BatchNorm→ReLU into single kernel
+2. **Memory Planning**: Pre-allocate all buffers based on static analysis
+3. **Constant Propagation**: Evaluate constant subgraphs at load time
+4. **Shape Specialization**: Generate specialized executors for common input shapes
+5. **Parallel Execution**: Execute independent nodes concurrently
+
+### Benchmarking Strategy
+
+Compare against:
+
+- **ONNX Runtime Web** (WebGL backend)
+- **ONNX Runtime CPU** (native)
+- **Native hologram-ai** (e.g., existing SDXS implementation)
+
+Target metrics:
+
+- Model load time
+- First inference time (cold start)
+- Subsequent inference time (warm)
+- Memory usage
+- Bundle size (WASM)
+
+---
+
+## Future Enhancements
+
+### Phase 1 (MVP): Core Functionality
+
+- ONNX protobuf parsing
+- Graph execution (single-threaded)
+- 20 core operators for Stable Diffusion
+- FP32 support
+
+### Phase 2: Performance
+
+- Graph optimization passes
+- Operator fusion
+- Parallel execution
+- Memory planning
+
+### Phase 3: Completeness
+
+- 80+ operators (vision + language models)
+- Dynamic shapes
+- Control flow (If, Loop)
+- FP16 support
+
+### Phase 4: Advanced
+
+- INT8 quantization
+- Dynamic quantization
+- Training support (autograd)
+- Custom operator extensibility
+
+---
+
+## References
+
+- [ONNX Specification](https://onnx.ai/onnx/intro/index.html)
+- [ONNX Operators](https://onnx.ai/onnx/operators/)
+- [ONNX Runtime Architecture](https://onnxruntime.ai/docs/reference/high-level-design.html)
+- [Hologram Backend Architecture](../BACKEND_ARCHITECTURE.md)
+- [Hologram Operations](../../crates/hologram-core/src/ops/)

@@ -1,0 +1,834 @@
+---
+title: "Adding New Kernels to Hologram"
+description: "Adding New Kernels to Hologram documentation"
+---
+
+# Adding New Kernels to Hologram
+
+This guide provides a step-by-step process for adding new compute kernels to the Hologram system, from Python schema definition to FFI bindings.
+
+## Overview
+
+The Hologram kernel pipeline consists of four stages:
+
+```
+Python Kernel Schema → JSON Schema → ISA Program → FFI Bindings
+   (schemas/)        (target/json/)  (precompiled)  (hologram-ffi)
+```
+
+## Stage 1: Create Python Kernel Schema
+
+### Location
+Place new kernels in: `schemas/stdlib/<category>/<operation>.py`
+
+Categories:
+- `vector/` - Element-wise vector operations
+- `matrix/` - Matrix operations
+- `reduce/` - Reduction operations
+- `activation/` - Neural network activations
+- `loss/` - Loss functions
+
+### Python Kernel Template
+
+```python
+from typing import DeviceArray, u32, f32
+
+def kernel_name(
+    input_a: DeviceArray[f32],
+    input_b: DeviceArray[f32],
+    output: DeviceArray[f32],
+    n: u32
+):
+    """Brief description of what this kernel does
+
+    Example: Compute element-wise operation: output = op(input_a, input_b)
+    """
+    idx = get_global_id()
+    if idx < n:
+        # Kernel implementation
+        output[idx] = input_a[idx] + input_b[idx]  # Example operation
+```
+
+### Supported Python Features
+
+#### ✅ Supported Expressions
+
+1. **Binary Operations**: `+`, `-`, `*`, `/`, `%`
+   ```python
+   c[idx] = a[idx] + b[idx]
+   c[idx] = a[idx] * 2.0
+   ```
+
+2. **Unary Operations**: `-` (negation), `+` (positive)
+   ```python
+   c[idx] = -a[idx]
+   ```
+
+3. **Comparisons**: `<`, `<=`, `>`, `>=`, `==`, `!=`
+   ```python
+   if a[idx] > 0.0:
+       c[idx] = a[idx]
+   ```
+
+4. **Array Indexing**
+   ```python
+   value = array[idx]
+   array[idx] = value
+   ```
+
+5. **Function Calls**
+   ```python
+   idx = get_global_id()
+   value = min(a[idx], b[idx])
+   result = atomic_add_f32(result, value)
+   ```
+
+6. **Control Flow**
+   ```python
+   if condition:
+       # then body
+   else:
+       # else body
+
+   for i in range(n):
+       # loop body
+   ```
+
+7. **Variable Declaration and Assignment**
+   ```python
+   value = array[idx]  # Declaration (first use)
+   value = value + 1.0  # Reassignment
+   ```
+
+#### ❌ Unsupported Features
+
+- Complex expressions: `a[idx] if condition else b[idx]`
+- Multiple comparisons: `if 0 < x < 10:`
+- Boolean operators: `and`, `or`, `not` (use nested `if` instead)
+- Slicing: `array[0:10]`
+- List comprehensions
+- Lambda functions
+
+### Operation Categories
+
+#### 1. Binary Element-wise Operations
+
+**Pattern**: Two inputs, one output
+
+```python
+def vector_add(a: DeviceArray[f32], b: DeviceArray[f32], c: DeviceArray[f32], n: u32):
+    """Element-wise addition: c = a + b"""
+    idx = get_global_id()
+    if idx < n:
+        c[idx] = a[idx] + b[idx]
+```
+
+**Classification**: Automatically recognized as `BinaryElementwise` (2 device_array inputs + 1 output)
+
+#### 2. Unary Element-wise Operations
+
+**Pattern**: One input, one output
+
+```python
+def vector_neg(a: DeviceArray[f32], c: DeviceArray[f32], n: u32):
+    """Element-wise negation: c = -a"""
+    idx = get_global_id()
+    if idx < n:
+        c[idx] = -a[idx]
+```
+
+**Classification**: Automatically recognized as `UnaryElementwise` (1 device_array input + 1 output)
+
+#### 3. Reduction Operations
+
+**Pattern**: Aggregate many elements to one
+
+```python
+def vector_sum(a: DeviceArray[f32], result: DeviceArray[f32], n: u32):
+    """Sum reduction: result = Σ(a[i])"""
+    idx = get_global_id()
+    if idx < n:
+        atomic_add_f32(result, a[idx])
+```
+
+**Classification**: Requires explicit classification in `json_to_isa.rs` (see Stage 2)
+
+#### 4. Complex Operations
+
+**Pattern**: Operations requiring custom logic (multiple steps, special cases)
+
+```python
+def relu(a: DeviceArray[f32], b: DeviceArray[f32], n: u32):
+    """ReLU activation: b = max(0, a)"""
+    idx = get_global_id()
+    if idx < n:
+        value = a[idx]
+        if value > 0.0:
+            b[idx] = value
+        else:
+            b[idx] = 0.0
+```
+
+**Classification**: Requires custom translation in `json_to_isa.rs` (see Stage 2)
+
+## Stage 2: Configure JSON→ISA Translation
+
+### Location
+`crates/hologram-backends/src/json_to_isa.rs`
+
+### For Simple Operations (Binary/Unary)
+
+Simple operations are **automatically handled** if they match standard patterns:
+
+- **Binary ops**: 3 device_array params (2 inputs + 1 output) → Uses instruction like `ADD`, `SUB`, `MUL`, `DIV`, `MIN`, `MAX`
+- **Unary ops**: 2 device_array params (1 input + 1 output) → Uses instruction like `NEG`, `ABS`, `SIN`, `COS`, `LOG`, `EXP`
+
+The operation name determines the ISA instruction:
+```rust
+// In translate_binary_op() - crates/hologram-backends/src/json_to_isa.rs:162-189
+if name.contains("add") {
+    Instruction::ADD { ty: Type::F32, dst, src1, src2 }
+} else if name.contains("mul") {
+    Instruction::MUL { ty: Type::F32, dst, src1, src2 }
+}
+
+// In translate_unary_op() - crates/hologram-backends/src/json_to_isa.rs:219-265
+if name.contains("neg") {
+    Instruction::NEG { ty: Type::F32, dst, src }
+} else if name.contains("abs") {
+    Instruction::ABS { ty: Type::F32, dst, src }
+}
+```
+
+### For Reductions
+
+**1. Add Classification** (if not already classified)
+
+In `classify_operation()` around line 113:
+
+```rust
+// Special case: Sum/dot are reductions, not unary ops (even with 2 array params)
+if name.contains("sum") || name.contains("dot") {
+    return Ok(OperationType::Reduction);
+}
+
+// Add your reduction here:
+if name.contains("your_reduction_name") {
+    return Ok(OperationType::Reduction);
+}
+```
+
+**2. Reduction operations currently use CPU fallback** - ISA translation returns early for reductions.
+
+### For Complex Operations
+
+**1. Add Classification**
+
+In `classify_operation()` around line 108:
+
+```rust
+// Special case: ReLU requires custom translation (max(0, x))
+if name.contains("relu") {
+    return Ok(OperationType::Complex);
+}
+
+// Add your complex operation here:
+if name.contains("your_op_name") {
+    return Ok(OperationType::Complex);
+}
+```
+
+**2. Implement Custom Translation**
+
+Add a new translation function following the pattern of `translate_relu()` (line 271):
+
+```rust
+/// Translate YourOp operation to ISA
+///
+/// Brief description of what this operation does
+fn translate_your_op(_json: &JsonSchema) -> Result<Program, String> {
+    use crate::isa::special_registers::*;
+    use crate::isa::{Address, Condition, Instruction, Label, Predicate, Program, Register, Type};
+    use std::collections::HashMap;
+
+    let shift_amount = 2; // F32 = 4 bytes = 2^2
+    let mut labels = HashMap::new();
+    let exit_label = "bounds_exit";
+
+    let mut instructions = vec![
+        // 1. Bounds check: if (GLOBAL_LANE_ID >= n) exit
+        Instruction::SETcc {
+            ty: Type::U64,
+            cond: Condition::GEU,
+            dst: Predicate::new(0),
+            src1: GLOBAL_LANE_ID,
+            src2: Register(4), // n passed via R4
+        },
+        Instruction::BRA {
+            target: Label::new(exit_label),
+            pred: Some(Predicate::new(0)),
+        },
+
+        // 2. Compute byte offset: offset = GLOBAL_LANE_ID << shift_amount
+        Instruction::MOV_IMM {
+            ty: Type::U32,
+            dst: Register(250),
+            value: shift_amount,
+        },
+        Instruction::SHL {
+            ty: Type::U64,
+            dst: Register(0),
+            src: GLOBAL_LANE_ID,
+            amount: Register(250),
+        },
+
+        // 3. Load input values
+        Instruction::LDG {
+            ty: Type::F32,
+            dst: Register(10),
+            addr: Address::RegisterIndirectComputed {
+                handle_reg: Register(1), // First input buffer handle
+                offset_reg: Register(0),
+            },
+        },
+
+        // 4. Perform operation
+        // ... your operation logic here ...
+
+        // 5. Store result
+        Instruction::STG {
+            ty: Type::F32,
+            src: Register(12), // Result register
+            addr: Address::RegisterIndirectComputed {
+                handle_reg: Register(3), // Output buffer handle
+                offset_reg: Register(0),
+            },
+        },
+
+        // 6. Exit label
+        Instruction::LABEL {
+            name: Label::new(exit_label),
+        },
+        Instruction::EXIT,
+    ];
+
+    labels.insert(exit_label.to_string(), instructions.len() - 2);
+
+    Ok(Program {
+        instructions,
+        labels,
+    })
+}
+```
+
+**3. Wire Up Translation**
+
+In `translate_json_to_isa()` around line 75:
+
+```rust
+OperationType::Complex => {
+    // Try complex operation handlers
+    if name.contains("relu") {
+        translate_relu(&json)?
+    } else if name.contains("your_op_name") {
+        translate_your_op(&json)?
+    } else {
+        return Err(format!("Unknown complex operation: {}", name));
+    }
+}
+```
+
+### Register Allocation Convention
+
+When implementing custom ISA translations, follow these conventions:
+
+**Input Parameters** (passed via registers):
+- `R1`: Handle to first input buffer (e.g., `a`)
+- `R2`: Handle to second input buffer (e.g., `b`) - if applicable
+- `R3`: Handle to output buffer (e.g., `c`)
+- `R4`: Size parameter `n` (u64)
+
+**Working Registers**:
+- `R0`: Byte offset computation
+- `R10-R20`: Input values loaded from memory
+- `R21-R30`: Intermediate computation results
+- `R250-R254`: Temporary/constant values
+- `P0-P3`: Predicates for conditionals
+
+**Special Registers** (from `isa::special_registers`):
+- `GLOBAL_LANE_ID`: Current thread/lane index
+- `GLOBAL_LANE_COUNT`: Total number of threads/lanes
+
+## Stage 3: Add FFI Bindings
+
+### Location
+`crates/hologram-ffi/src/<category>.rs`
+
+### 1. Create or Update Module
+
+If the category doesn't exist, create `crates/hologram-ffi/src/<category>.rs`:
+
+```rust
+//! <Category> operations for FFI
+//!
+//! FFI bindings for <category> compute operations
+
+use crate::handles::{lock_registry, BUFFER_REGISTRY, EXECUTOR_REGISTRY};
+use hologram_core::ops::<category>;
+
+/// Brief description of operation
+///
+/// # Arguments
+///
+/// * `executor_handle` - Handle to the executor
+/// * `input_a_handle` - Handle to first input buffer
+/// * `input_b_handle` - Handle to second input buffer (if applicable)
+/// * `output_handle` - Handle to output buffer
+/// * `n` - Number of elements to process
+///
+/// # Example
+///
+/// ```ignore
+/// let exec = new_executor();
+/// let buf_a = executor_allocate_buffer(exec, 100);
+/// let buf_b = executor_allocate_buffer(exec, 100);
+/// let buf_c = executor_allocate_buffer(exec, 100);
+///
+/// // ... fill buf_a and buf_b with data ...
+///
+/// your_operation_f32(exec, buf_a, buf_b, buf_c, 100);
+/// ```
+pub fn your_operation_f32(
+    executor_handle: u64,
+    input_a_handle: u64,
+    input_b_handle: u64,
+    output_handle: u64,
+    n: u32,
+) {
+    // Get executor
+    let mut exec_registry = lock_registry(&EXECUTOR_REGISTRY);
+    let executor = exec_registry
+        .get_mut(&executor_handle)
+        .unwrap_or_else(|| panic!("Executor handle {} not found", executor_handle));
+
+    // Get buffers
+    let mut buf_registry = lock_registry(&BUFFER_REGISTRY);
+
+    let input_a = buf_registry
+        .get(&input_a_handle)
+        .unwrap_or_else(|| panic!("Buffer handle {} not found", input_a_handle));
+
+    let input_b = buf_registry
+        .get(&input_b_handle)
+        .unwrap_or_else(|| panic!("Buffer handle {} not found", input_b_handle));
+
+    let output = buf_registry
+        .get_mut(&output_handle)
+        .unwrap_or_else(|| panic!("Buffer handle {} not found", output_handle));
+
+    // Execute operation
+    <category>::your_operation(executor, input_a, input_b, output, n as usize)
+        .expect("Failed to execute operation");
+
+    tracing::debug!(
+        executor = executor_handle,
+        input_a = input_a_handle,
+        input_b = input_b_handle,
+        output = output_handle,
+        n = n,
+        "Operation completed"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::executor::{executor_cleanup, new_executor, executor_allocate_buffer};
+    use crate::buffer::{buffer_copy_from_slice, buffer_to_vec, buffer_cleanup};
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn test_your_operation() {
+        let exec = new_executor();
+        let buf_a = executor_allocate_buffer(exec, 4);
+        let buf_b = executor_allocate_buffer(exec, 4);
+        let buf_c = executor_allocate_buffer(exec, 4);
+
+        // Setup input data
+        let data_a = vec![1.0, 2.0, 3.0, 4.0];
+        let data_b = vec![5.0, 6.0, 7.0, 8.0];
+        let json_a = serde_json::to_string(&data_a).unwrap();
+        let json_b = serde_json::to_string(&data_b).unwrap();
+
+        buffer_copy_from_slice(exec, buf_a, json_a);
+        buffer_copy_from_slice(exec, buf_b, json_b);
+
+        // Execute operation
+        your_operation_f32(exec, buf_a, buf_b, buf_c, 4);
+
+        // Verify results
+        let json_result = buffer_to_vec(exec, buf_c);
+        let result: Vec<f32> = serde_json::from_str(&json_result).unwrap();
+
+        // Assert expected results
+        assert_eq!(result.len(), 4);
+        // ... add specific value checks ...
+
+        buffer_cleanup(buf_a);
+        buffer_cleanup(buf_b);
+        buffer_cleanup(buf_c);
+        executor_cleanup(exec);
+    }
+}
+```
+
+### 2. Register Module in lib.rs
+
+In `crates/hologram-ffi/src/lib.rs`:
+
+```rust
+// Add module declaration (line ~36)
+mod your_category;
+
+// Add public re-export (line ~39+)
+pub use your_category::{your_operation_f32, another_operation_f32};
+```
+
+### 3. Update UniFFI Definition
+
+In `crates/hologram-ffi/src/hologram_ffi.udl`:
+
+```webidl
+namespace hologram_ffi {
+    // ... existing functions ...
+
+    // Your category operations
+    void your_operation_f32(
+        u64 executor_handle,
+        u64 input_a_handle,
+        u64 input_b_handle,
+        u64 output_handle,
+        u32 n
+    );
+};
+```
+
+## Stage 4: Add Integration Tests
+
+### Location
+`crates/hologram-ffi/tests/compile_test.rs` (or create category-specific test file)
+
+### Test Template
+
+```rust
+#[test]
+fn test_your_operation() {
+    let exec = new_executor();
+
+    // Allocate buffers
+    let buf_a = executor_allocate_buffer(exec, 4);
+    let buf_b = executor_allocate_buffer(exec, 4);
+    let buf_c = executor_allocate_buffer(exec, 4);
+
+    // Initialize test data
+    let data_a = vec![1.0, 2.0, 3.0, 4.0];
+    let data_b = vec![5.0, 6.0, 7.0, 8.0];
+    let json_a = serde_json::to_string(&data_a).unwrap();
+    let json_b = serde_json::to_string(&data_b).unwrap();
+
+    buffer_copy_from_slice(exec, buf_a, json_a);
+    buffer_copy_from_slice(exec, buf_b, json_b);
+
+    // Execute operation
+    your_operation_f32(exec, buf_a, buf_b, buf_c, 4);
+
+    // Verify results
+    let json_result = buffer_to_vec(exec, buf_c);
+    let result: Vec<f32> = serde_json::from_str(&json_result).unwrap();
+    let expected = vec![6.0, 8.0, 10.0, 12.0]; // Expected output
+
+    for (i, &value) in result.iter().enumerate() {
+        assert!(
+            (value - expected[i]).abs() < 0.001,
+            "Result at index {} should be {}, got {}",
+            i,
+            expected[i],
+            value
+        );
+    }
+
+    buffer_cleanup(buf_a);
+    buffer_cleanup(buf_b);
+    buffer_cleanup(buf_c);
+    executor_cleanup(exec);
+}
+```
+
+## Stage 5: Verify and Test
+
+### Build and Verify
+
+```bash
+# Clean build to regenerate everything
+cargo clean
+cargo build --workspace
+
+# Verify Python→JSON compilation succeeded
+# Look for: "Python → JSON compilation: N succeeded, 0 failed"
+
+# Verify precompilation count increased
+# Look for: "Total programs: N"
+```
+
+### Run Tests
+
+```bash
+# Run all workspace tests
+cargo test --workspace
+
+# Run specific FFI tests
+cargo test -p hologram-ffi
+
+# Check for zero warnings
+cargo clippy --workspace -- -D warnings
+```
+
+### Verify Precompilation
+
+Check the build output for your operation:
+
+```
+✅ vector_your_op: UnaryElementwise → ISA (45 instructions)
+```
+
+Or check the generated file:
+
+```bash
+grep "pub static YOUR_OP:" target/debug/build/hologram-core-*/out/precompiled_ops.rs
+```
+
+## Common Patterns and Examples
+
+### Example 1: Simple Binary Operation (Modulo)
+
+**1. Python Schema** (`schemas/stdlib/vector/mod.py`):
+```python
+def vector_mod(a: DeviceArray[f32], b: DeviceArray[f32], c: DeviceArray[f32], n: u32):
+    """Element-wise modulo: c = a % b"""
+    idx = get_global_id()
+    if idx < n:
+        c[idx] = a[idx] % b[idx]
+```
+
+**2. ISA Translation** - Automatic! Just add to binary op translator in `json_to_isa.rs`:
+```rust
+} else if name.contains("mod") {
+    Box::new(|src1, src2, dst| Instruction::REM {
+        ty: Type::F32,
+        dst,
+        src1,
+        src2,
+    })
+```
+
+**3. FFI Binding** (`crates/hologram-ffi/src/math.rs`):
+```rust
+pub fn vector_mod_f32(
+    executor_handle: u64,
+    a_handle: u64,
+    b_handle: u64,
+    c_handle: u64,
+    n: u32,
+) {
+    // ... standard buffer access pattern ...
+    hologram_core::ops::math::vector_mod(executor, a, b, c, n as usize)
+        .expect("Failed to execute vector_mod");
+}
+```
+
+### Example 2: Unary Trigonometric (Tangent)
+
+**1. Python Schema** (`schemas/stdlib/vector/tan.py`):
+```python
+def vector_tan(a: DeviceArray[f32], c: DeviceArray[f32], n: u32):
+    """Element-wise tangent: c = tan(a)"""
+    idx = get_global_id()
+    if idx < n:
+        c[idx] = tan(a[idx])
+```
+
+**2. ISA Translation** - Automatic! Add to unary op translator:
+```rust
+} else if name.contains("tan") {
+    Box::new(|src, dst| Instruction::TAN {
+        ty: Type::F32,
+        dst,
+        src,
+    })
+```
+
+### Example 3: Activation Function (Leaky ReLU)
+
+**1. Python Schema** (`schemas/stdlib/activation/leaky_relu.py`):
+```python
+def leaky_relu(a: DeviceArray[f32], b: DeviceArray[f32], alpha: f32, n: u32):
+    """Leaky ReLU: b = max(alpha * a, a)"""
+    idx = get_global_id()
+    if idx < n:
+        value = a[idx]
+        if value > 0.0:
+            b[idx] = value
+        else:
+            b[idx] = alpha * value
+```
+
+**2. ISA Translation** - Requires custom handler due to `alpha` parameter
+**3. FFI Binding** - Add parameter for `alpha`
+
+## Checklist for Adding New Kernel
+
+- [ ] **Stage 1: Python Schema**
+  - [ ] Created Python kernel in `schemas/stdlib/<category>/<name>.py`
+  - [ ] Followed supported syntax guidelines
+  - [ ] Added docstring explaining operation
+  - [ ] Tested manually: `cargo build` shows "Python → JSON compilation: N succeeded"
+
+- [ ] **Stage 2: JSON→ISA Translation**
+  - [ ] For simple ops: Verified name-based instruction mapping exists
+  - [ ] For reductions: Added classification in `classify_operation()`
+  - [ ] For complex ops: Implemented custom `translate_<name>()` function
+  - [ ] Verified: Build shows operation in precompilation summary
+
+- [ ] **Stage 3: FFI Bindings**
+  - [ ] Created/updated module in `crates/hologram-ffi/src/<category>.rs`
+  - [ ] Registered module in `lib.rs`
+  - [ ] Updated `hologram_ffi.udl`
+  - [ ] Added module tests
+
+- [ ] **Stage 4: Integration Tests**
+  - [ ] Added test in `crates/hologram-ffi/tests/compile_test.rs`
+  - [ ] Test covers typical use case
+  - [ ] Test verifies correctness with specific values
+
+- [ ] **Stage 5: Verification**
+  - [ ] `cargo build --workspace` succeeds
+  - [ ] `cargo test --workspace` passes
+  - [ ] `cargo clippy --workspace -- -D warnings` shows zero warnings
+  - [ ] Precompiled program count increased
+  - [ ] Operation appears in generated `precompiled_ops.rs`
+
+## Troubleshooting
+
+### Python→JSON Compilation Failed
+
+**Error**: `❌ Failed to compile <name>: Unsupported expression: ...`
+
+**Solutions**:
+1. Check if you're using unsupported Python syntax
+2. Simplify complex expressions into multiple statements
+3. Verify type annotations are correct
+4. Check if compiler needs extension for new expression type
+
+### JSON→ISA Translation Failed
+
+**Error**: `❌ Translation failed for <name>: Unknown <type> operation: <name>`
+
+**Solutions**:
+1. For binary/unary ops: Add name mapping in translator
+2. For reductions: Add classification
+3. For complex ops: Implement custom translation function
+4. Check operation type classification is correct
+
+### Operation Not in Precompiled List
+
+**Symptom**: Build succeeds but operation count didn't increase
+
+**Solutions**:
+1. Check JSON file generated in `target/json/<name>.json`
+2. Verify Python→JSON compilation succeeded
+3. Check if operation classified correctly
+4. Look for translation errors in build output
+
+### FFI Tests Failing
+
+**Common Issues**:
+1. Buffer size mismatch (e.g., reductions need 3 elements minimum)
+2. Incorrect handle passing order
+3. JSON serialization/deserialization mismatch
+4. Expected vs actual result comparison (use epsilon for float comparison)
+
+## Advanced Topics
+
+### Supporting Multiple Data Types
+
+To support `f64`, `i32`, etc., create separate functions:
+
+```rust
+pub fn your_operation_f32(...) { /* f32 implementation */ }
+pub fn your_operation_f64(...) { /* f64 implementation */ }
+pub fn your_operation_i32(...) { /* i32 implementation */ }
+```
+
+In ISA translation, use appropriate `Type`:
+```rust
+Instruction::ADD {
+    ty: Type::F64,  // or Type::I32, Type::U64, etc.
+    dst,
+    src1,
+    src2,
+}
+```
+
+### Matrix Operations
+
+Matrix operations typically need:
+- Multiple size parameters (M, N, K for GEMM)
+- Stride information for non-contiguous data
+- Complex indexing logic
+
+See `crates/hologram-ffi/src/linalg.rs` for examples.
+
+### Operations with Scalar Parameters
+
+For operations requiring scalar constants (like `alpha` in Leaky ReLU):
+
+**Python**:
+```python
+def operation(a: DeviceArray[f32], b: DeviceArray[f32], alpha: f32, n: u32):
+    ...
+```
+
+**ISA**: Load scalar into register:
+```rust
+Instruction::MOV_IMM {
+    ty: Type::F32,
+    dst: Register(20),
+    value: alpha_bits,
+}
+```
+
+**FFI**: Add parameter:
+```rust
+pub fn operation_f32(..., alpha: f32, ...) {
+    ops::operation(..., alpha, ...)
+}
+```
+
+## Reference Files
+
+- **Python Compiler**: `schemas/stdlib/compiler.py`
+- **JSON→ISA Translator**: `crates/hologram-backends/src/json_to_isa.rs`
+- **ISA Definitions**: `crates/hologram-backends/src/isa/mod.rs`
+- **Build Script**: `crates/hologram-core/build.rs`
+- **FFI Examples**: `crates/hologram-ffi/src/math.rs`
+- **Test Examples**: `crates/hologram-ffi/tests/compile_test.rs`
+
+## Getting Help
+
+If you encounter issues:
+1. Check build output for specific error messages
+2. Verify against working examples (e.g., `vector_add`, `vector_neg`)
+3. Use `cargo build -vv` for verbose output
+4. Check generated JSON in `target/json/`
+5. Review existing operations in same category for patterns
