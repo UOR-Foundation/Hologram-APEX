@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.manager.test",
+  "parent": "hologram.manager",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for manager conformance",
+  "test": {
+    "version": "0.1.0",
+    "description": "Manager conformance tests",
+    "tests": [
+      {
+        "name": "validate_operations",
+        "description": "Ensure all operations are defined"
+      },
+      {
+        "name": "validate_storage",
+        "description": "Ensure storage configuration is valid"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.test.docs",
+  "parent": "hologram.test",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for test conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Test conformance documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "Test conformance ensures all components have comprehensive tests"
+      },
+      {
+        "title": "Test Structure",
+        "content": "Tests are defined as an array with name and description"
+      }
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.test.spec",
+  "title": "Hologram Test Conformance",
+  "description": "Defines test conformance for components",
+  "type": "object",
+  "namespace": "hologram.test.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.1.0",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.test$"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+    },
+    "conformance": {
+      "type": "boolean",
+      "const": true
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "test": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "description"
+            ]
+          }
+        }
+      },
+      "required": [
+        "version",
+        "description",
+        "tests"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "version",
+    "description",
+    "test"
+  ]
+}

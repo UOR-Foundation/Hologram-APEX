@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.validate.test",
+  "parent": "hologram.validate",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for validation component",
+  "test": {
+    "version": "0.1.0",
+    "description": "Validation component tests",
+    "tests": [
+      {
+        "name": "test_schema_validation",
+        "description": "Test JSON schema validation"
+      },
+      {
+        "name": "test_conformance_validation",
+        "description": "Test conformance validation"
+      }
+    ]
+  }
+}

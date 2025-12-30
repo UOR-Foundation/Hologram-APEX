@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.read.test",
+  "parent": "hologram.read",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for read operation",
+  "test": {
+    "version": "0.1.0",
+    "description": "Read operation tests",
+    "tests": [
+      {
+        "name": "test_read_component",
+        "description": "Test reading complete component"
+      },
+      {
+        "name": "test_read_file",
+        "description": "Test reading specific file"
+      }
+    ]
+  }
+}

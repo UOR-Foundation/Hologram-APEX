@@ -1,0 +1,39 @@
+{
+  "namespace": "hologram.spec.test",
+  "parent": "hologram.spec",
+  "conformance": true,
+  "version": "0.1.0",
+  "test": {
+    "version": "0.1.0",
+    "description": "Test suite for hologram.spec base schema validation",
+    "tests": [
+      {
+        "name": "validate_required_fields",
+        "description": "Ensures all required fields are validated"
+      },
+      {
+        "name": "validate_namespace_pattern",
+        "description": "Ensures namespace follows correct pattern"
+      },
+      {
+        "name": "validate_version_pattern",
+        "description": "Ensures version follows semantic versioning"
+      },
+      {
+        "name": "self_validation",
+        "description": "Ensures hologram.spec validates against itself"
+      },
+      {
+        "name": "allow_additional_properties",
+        "description": "Ensures additional properties like $schema are allowed"
+      }
+    ],
+    "coverage": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    }
+  },
+  "description": "Test conformance for hologram.spec"
+}

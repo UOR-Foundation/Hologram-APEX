@@ -1,0 +1,460 @@
+{
+  "component": "hologram.view",
+  "version": "1.0.0",
+  "description": "Defines how components are visually presented and rendered across different contexts and platforms",
+  "status": "conformant",
+  "conformance": {
+    "extends": "hologram.conformance",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "hologram.view",
+      "type": "object",
+      "required": [
+        "conformance_type",
+        "template",
+        "sections",
+        "rendering"
+      ],
+      "properties": {
+        "conformance_type": {
+          "type": "string",
+          "const": "view",
+          "description": "Identifies this as a view conformance"
+        },
+        "extends": {
+          "type": "string",
+          "pattern": "^hologram\\.[a-z]+(\\.[a-z]+)*$",
+          "description": "Parent view to inherit from"
+        },
+        "template": {
+          "type": "object",
+          "required": [
+            "layout",
+            "style"
+          ],
+          "properties": {
+            "layout": {
+              "type": "string",
+              "enum": [
+                "component-detail",
+                "component-grid",
+                "documentation",
+                "dashboard",
+                "custom"
+              ],
+              "description": "Base layout pattern for rendering"
+            },
+            "style": {
+              "type": "string",
+              "enum": [
+                "technical",
+                "narrative",
+                "visual",
+                "minimal",
+                "comprehensive"
+              ],
+              "description": "Presentation style preference"
+            },
+            "responsive": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether view adapts to different screen sizes"
+            },
+            "theme": {
+              "type": "object",
+              "properties": {
+                "colors": {
+                  "type": "object",
+                  "description": "Color scheme overrides"
+                },
+                "typography": {
+                  "type": "object",
+                  "description": "Font and text styling"
+                },
+                "spacing": {
+                  "type": "object",
+                  "description": "Layout spacing preferences"
+                }
+              }
+            }
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title",
+              "source"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$",
+                "description": "Section identifier"
+              },
+              "title": {
+                "type": "string",
+                "description": "Display title for the section"
+              },
+              "source": {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "spec",
+                      "conformance",
+                      "computed",
+                      "external"
+                    ],
+                    "description": "Where section content comes from"
+                  },
+                  "conformance": {
+                    "type": "string",
+                    "pattern": "^[a-z]+$",
+                    "description": "Which conformance file to pull from"
+                  },
+                  "field": {
+                    "type": "string",
+                    "description": "Specific field to extract"
+                  },
+                  "transform": {
+                    "type": "string",
+                    "enum": [
+                      "raw",
+                      "markdown",
+                      "json",
+                      "diagram",
+                      "graph",
+                      "table"
+                    ],
+                    "description": "How to transform the data for display"
+                  }
+                }
+              },
+              "visibility": {
+                "type": "object",
+                "properties": {
+                  "default": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "description": "Conditional visibility rules"
+                    }
+                  }
+                }
+              },
+              "order": {
+                "type": "integer",
+                "description": "Display order (lower numbers first)"
+              },
+              "collapsible": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether section can be collapsed"
+              }
+            }
+          },
+          "description": "Ordered list of sections to display"
+        },
+        "rendering": {
+          "type": "object",
+          "required": [
+            "modes"
+          ],
+          "properties": {
+            "modes": {
+              "type": "object",
+              "properties": {
+                "web": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "framework": {
+                      "type": "string",
+                      "enum": [
+                        "static",
+                        "react",
+                        "vue",
+                        "vanilla"
+                      ],
+                      "description": "Rendering framework for web"
+                    },
+                    "features": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "search",
+                          "navigation",
+                          "breadcrumbs",
+                          "toc",
+                          "copy-code",
+                          "dark-mode"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "terminal": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "plain",
+                        "ansi",
+                        "markdown"
+                      ],
+                      "description": "Terminal output format"
+                    },
+                    "width": {
+                      "type": "integer",
+                      "default": 80,
+                      "description": "Terminal width assumption"
+                    }
+                  }
+                },
+                "api": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "json",
+                        "xml",
+                        "yaml"
+                      ],
+                      "description": "API response format"
+                    },
+                    "endpoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Available API endpoints for this view"
+                    }
+                  }
+                },
+                "print": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "pdf",
+                        "html",
+                        "markdown"
+                      ],
+                      "description": "Print output format"
+                    },
+                    "stylesheet": {
+                      "type": "string",
+                      "description": "Print-specific styling"
+                    }
+                  }
+                }
+              },
+              "description": "Different rendering contexts and their configurations"
+            },
+            "cache": {
+              "type": "object",
+              "properties": {
+                "strategy": {
+                  "type": "string",
+                  "enum": [
+                    "static",
+                    "dynamic",
+                    "none"
+                  ],
+                  "default": "static",
+                  "description": "Caching strategy for rendered views"
+                },
+                "ttl": {
+                  "type": "integer",
+                  "description": "Time-to-live in seconds for cached views"
+                }
+              }
+            }
+          }
+        },
+        "navigation": {
+          "type": "object",
+          "properties": {
+            "breadcrumbs": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show breadcrumb navigation"
+            },
+            "siblings": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show related components"
+            },
+            "children": {
+              "type": "boolean",
+              "default": true,
+              "description": "Show child components"
+            },
+            "search": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "default": true
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Fields to include in search index"
+                }
+              }
+            }
+          },
+          "description": "Navigation and discovery features"
+        },
+        "interactions": {
+          "type": "object",
+          "properties": {
+            "actions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "label",
+                  "type"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "copy",
+                      "download",
+                      "share",
+                      "edit",
+                      "validate",
+                      "custom"
+                    ]
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              },
+              "description": "Available user interactions"
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "handler": {
+                    "type": "string"
+                  }
+                }
+              },
+              "description": "Event handlers for user interactions"
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "View title template"
+            },
+            "description": {
+              "type": "string",
+              "description": "View description template"
+            },
+            "keywords": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Keywords for search and discovery"
+            },
+            "og": {
+              "type": "object",
+              "description": "Open Graph metadata for social sharing"
+            }
+          },
+          "description": "Metadata for the view"
+        },
+        "accessibility": {
+          "type": "object",
+          "properties": {
+            "aria_labels": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include ARIA labels"
+            },
+            "keyboard_navigation": {
+              "type": "boolean",
+              "default": true,
+              "description": "Support keyboard navigation"
+            },
+            "screen_reader": {
+              "type": "boolean",
+              "default": true,
+              "description": "Optimize for screen readers"
+            },
+            "high_contrast": {
+              "type": "boolean",
+              "default": false,
+              "description": "Provide high contrast mode"
+            }
+          },
+          "description": "Accessibility features and requirements"
+        }
+      }
+    },
+    "validation": {
+      "rules": [
+        "View must define at least one rendering mode",
+        "Sections must have unique IDs",
+        "Parent view must exist if extends is specified",
+        "Source conformance must be valid conformance type",
+        "Section order values must be unique if specified"
+      ]
+    }
+  }
+}

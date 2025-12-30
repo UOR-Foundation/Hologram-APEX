@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.spec.dependency",
+  "parent": "hologram.spec",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Dependency conformance for hologram.spec",
+  "dependency": {
+    "required": [],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  },
+  "dependencies": {
+    "required": [],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.validate.spec",
+  "title": "Hologram Validation Component",
+  "description": "Defines validation for Hologram components",
+  "type": "object",
+  "namespace": "hologram.validate.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.1.0",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "const": "hologram.validate"
+    },
+    "parent": {
+      "type": "string",
+      "const": "hologram"
+    },
+    "conformance": {
+      "type": "boolean"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "validate": {
+      "type": "object",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "validate": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "type",
+              "validate"
+            ]
+          }
+        }
+      },
+      "required": [
+        "rules"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "version",
+    "description",
+    "validate"
+  ]
+}

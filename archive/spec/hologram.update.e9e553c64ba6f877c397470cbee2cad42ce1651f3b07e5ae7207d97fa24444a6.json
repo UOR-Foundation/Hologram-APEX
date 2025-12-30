@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.update.interface",
+  "parent": "hologram.update",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for update operation",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for updating components",
+    "methods": {
+      "updateComponent": {
+        "description": "Update component files"
+      },
+      "validateUpdate": {
+        "description": "Validate update before applying"
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.read.interface",
+  "parent": "hologram.read",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for read operation",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for reading components",
+    "methods": {
+      "readComponent": {
+        "description": "Read component files"
+      },
+      "readFile": {
+        "description": "Read specific file"
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "namespace": "hologram.read.log",
+  "parent": "hologram.read",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Log conformance for hologram.read",
+  "log": {
+    "version": "0.1.0",
+    "description": "Logging for hologram.read",
+    "levels": [
+      "debug",
+      "info",
+      "warn",
+      "error"
+    ],
+    "default_level": "info",
+    "format": {
+      "type": "json",
+      "timestamp": "iso8601",
+      "fields": {
+        "required": [
+          "timestamp",
+          "level",
+          "message"
+        ],
+        "optional": [
+          "context"
+        ],
+        "metadata": {}
+      }
+    },
+    "output": [
+      {
+        "type": "stderr",
+        "config": {}
+      }
+    ]
+  }
+}

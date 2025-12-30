@@ -1,0 +1,393 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.manager.spec",
+  "title": "Hologram Manager Interface",
+  "description": "Defines the interface for managing Hologram component types",
+  "type": "object",
+  "namespace": "hologram.manager.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.1.0",
+  "definitions": {
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "cid": {
+          "type": "string",
+          "pattern": "^cid:[a-z0-9]+$",
+          "description": "Content identifier"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "spec",
+            "implementation",
+            "conformance"
+          ],
+          "description": "Artifact type"
+        },
+        "content": {
+          "type": "object",
+          "description": "Artifact content"
+        },
+        "validated": {
+          "type": "boolean",
+          "description": "Whether artifact passed validation"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "cid",
+        "type",
+        "content",
+        "validated",
+        "timestamp"
+      ]
+    },
+    "manifest": {
+      "type": "object",
+      "properties": {
+        "namespace": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+        },
+        "parent": {
+          "type": "string",
+          "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$"
+        },
+        "artifacts": {
+          "type": "object",
+          "properties": {
+            "spec": {
+              "type": "string",
+              "pattern": "^cid:[a-z0-9]+$"
+            },
+            "implementation": {
+              "type": "string",
+              "pattern": "^cid:[a-z0-9]+$"
+            },
+            "test": {
+              "type": "string",
+              "pattern": "^cid:[a-z0-9]+$"
+            },
+            "docs": {
+              "type": "string",
+              "pattern": "^cid:[a-z0-9]+$"
+            },
+            "build": {
+              "type": "string",
+              "pattern": "^cid:[a-z0-9]+$"
+            },
+            "ci": {
+              "type": "string",
+              "pattern": "^cid:[a-z0-9]+$"
+            }
+          },
+          "required": [
+            "spec",
+            "implementation"
+          ],
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^cid:[a-z0-9]+$"
+          }
+        },
+        "cid": {
+          "type": "string",
+          "pattern": "^cid:[a-z0-9]+$",
+          "description": "Manifest content identifier"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "namespace",
+        "artifacts",
+        "cid",
+        "timestamp"
+      ]
+    },
+    "operation_result": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "cid": {
+          "type": "string",
+          "pattern": "^cid:[a-z0-9]+$"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "success"
+      ]
+    }
+  },
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*\\.manager$",
+      "description": "Manager namespace"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "Parent namespace"
+    },
+    "conformance": {
+      "type": "boolean",
+      "description": "Whether this is a conformance implementation"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version of the manager"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the manager component"
+    },
+    "manages": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "The component type this manager manages"
+    },
+    "operations": {
+      "type": "object",
+      "properties": {
+        "validate": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "input": {
+              "$ref": "#/definitions/manifest"
+            },
+            "output": {
+              "$ref": "#/definitions/operation_result"
+            }
+          },
+          "required": [
+            "description"
+          ]
+        },
+        "create": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "artifact_submission": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "$ref": "#/definitions/artifact"
+                },
+                "output": {
+                  "$ref": "#/definitions/operation_result"
+                }
+              }
+            },
+            "manifest_submission": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "$ref": "#/definitions/manifest"
+                },
+                "output": {
+                  "$ref": "#/definitions/operation_result"
+                }
+              }
+            }
+          },
+          "required": [
+            "description",
+            "artifact_submission",
+            "manifest_submission"
+          ]
+        },
+        "read": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "by_namespace": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                },
+                "output": {
+                  "$ref": "#/definitions/manifest"
+                }
+              }
+            },
+            "by_cid": {
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "string"
+                },
+                "output": {
+                  "$ref": "#/definitions/artifact"
+                }
+              }
+            }
+          },
+          "required": [
+            "description"
+          ]
+        },
+        "update": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "input": {
+              "$ref": "#/definitions/manifest"
+            },
+            "output": {
+              "$ref": "#/definitions/operation_result"
+            }
+          },
+          "required": [
+            "description"
+          ]
+        },
+        "delete": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "input": {
+              "type": "string"
+            },
+            "output": {
+              "$ref": "#/definitions/operation_result"
+            }
+          },
+          "required": [
+            "description"
+          ]
+        },
+        "build": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "supported": {
+              "type": "boolean"
+            }
+          }
+        },
+        "test": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "supported": {
+              "type": "boolean"
+            }
+          }
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "supported": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "required": [
+        "validate",
+        "create",
+        "read",
+        "update",
+        "delete"
+      ]
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "filesystem",
+            "database",
+            "memory",
+            "registry"
+          ],
+          "description": "Storage backend type"
+        },
+        "artifact_path": {
+          "type": "string",
+          "description": "Path or location for artifact storage"
+        },
+        "manifest_path": {
+          "type": "string",
+          "description": "Path or location for manifest storage"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "atlas": {
+      "type": "object",
+      "properties": {
+        "canonical": {
+          "type": "boolean",
+          "const": true
+        },
+        "deterministic": {
+          "type": "boolean",
+          "const": true
+        },
+        "verifiable": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "canonical",
+        "deterministic",
+        "verifiable"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "version",
+    "description",
+    "manages",
+    "operations",
+    "storage",
+    "atlas"
+  ]
+}

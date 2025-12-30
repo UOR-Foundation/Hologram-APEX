@@ -1,0 +1,45 @@
+{
+  "namespace": "hologram.view.dependency",
+  "parent": "hologram.view",
+  "conformance": true,
+  "version": "1.0.0",
+  "description": "Dependency conformance for view component",
+  "dependency": {
+    "required": [
+      {
+        "namespace": "hologram.component",
+        "version": ">=0.2.0",
+        "type": "conformance",
+        "reason": "Base component model"
+      },
+      {
+        "namespace": "hologram.spec",
+        "version": ">=0.1.0",
+        "type": "conformance",
+        "reason": "Schema validation"
+      }
+    ],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  },
+  "dependencies": {
+    "required": [
+      {
+        "namespace": "hologram.component",
+        "version": ">=0.2.0",
+        "type": "conformance",
+        "reason": "Base component model for view definitions"
+      },
+      {
+        "namespace": "hologram.spec",
+        "version": ">=0.1.0",
+        "type": "conformance",
+        "reason": "Schema validation for view conformance"
+      }
+    ],
+    "optional": [],
+    "development": [],
+    "conflicts": []
+  }
+}

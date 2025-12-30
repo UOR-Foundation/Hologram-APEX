@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.manager.manager",
+  "parent": "hologram.manager",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for manager conformance",
+  "manages": "hologram.manager",
+  "operations": {
+    "validate": {
+      "description": "Validate manager conformance"
+    },
+    "create": {
+      "description": "Create manager definition",
+      "artifact_submission": {
+        "description": "Submit manager artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit manager manifest"
+      }
+    },
+    "read": {
+      "description": "Read manager definition"
+    },
+    "update": {
+      "description": "Update manager definition"
+    },
+    "delete": {
+      "description": "Delete manager definition"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Manager lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create manager"
+      },
+      "read": {
+        "description": "Read manager"
+      },
+      "update": {
+        "description": "Update manager"
+      },
+      "delete": {
+        "description": "Delete manager"
+      },
+      "validate": {
+        "description": "Validate manager"
+      }
+    }
+  }
+}

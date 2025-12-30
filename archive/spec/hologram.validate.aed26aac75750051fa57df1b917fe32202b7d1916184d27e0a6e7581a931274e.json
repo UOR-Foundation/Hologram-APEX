@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.validate.docs",
+  "parent": "hologram.validate",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for validation component",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Validation component documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The validate component ensures components conform to specifications"
+      },
+      {
+        "title": "Validation Rules",
+        "content": "Rules are defined for schema validation and conformance checking"
+      }
+    ]
+  }
+}

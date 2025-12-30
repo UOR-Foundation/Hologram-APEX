@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.test.test",
+  "parent": "hologram.test",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for test conformance",
+  "test": {
+    "version": "0.1.0",
+    "description": "Test conformance tests",
+    "tests": [
+      {
+        "name": "validate_test_structure",
+        "description": "Ensure tests have proper structure"
+      },
+      {
+        "name": "validate_coverage",
+        "description": "Ensure adequate test coverage"
+      }
+    ]
+  }
+}

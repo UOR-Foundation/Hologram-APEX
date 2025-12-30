@@ -1,0 +1,38 @@
+{
+  "namespace": "hologram.spec.manager",
+  "parent": "hologram",
+  "conformance": true,
+  "version": "0.1.0",
+  "manages": "hologram.spec",
+  "operations": {
+    "validate": {
+      "description": "Validates artifacts against the base schema"
+    },
+    "create": {
+      "description": "Creates new components with base validation",
+      "artifact_submission": {},
+      "manifest_submission": {}
+    },
+    "read": {
+      "description": "Reads component artifacts"
+    },
+    "update": {
+      "description": "Updates components with re-validation"
+    },
+    "delete": {
+      "description": "Deletes components"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "description": "Manages the base schema validation"
+  },
+  "description": "Manager conformance for hologram.spec"
+}

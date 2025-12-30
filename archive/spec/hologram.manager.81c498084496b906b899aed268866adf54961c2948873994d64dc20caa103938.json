@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.manager.docs",
+  "parent": "hologram.manager",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for manager conformance",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Manager conformance documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "Manager conformance defines lifecycle management for components"
+      },
+      {
+        "title": "Operations",
+        "content": "Managers implement CRUD+V operations for their managed types"
+      }
+    ]
+  }
+}

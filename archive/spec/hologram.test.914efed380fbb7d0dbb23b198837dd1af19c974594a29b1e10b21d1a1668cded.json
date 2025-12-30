@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.test.interface",
+  "parent": "hologram.test",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for test conformance",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for test execution",
+    "methods": {
+      "runTests": {
+        "description": "Execute all tests"
+      },
+      "getResults": {
+        "description": "Get test results"
+      }
+    }
+  }
+}

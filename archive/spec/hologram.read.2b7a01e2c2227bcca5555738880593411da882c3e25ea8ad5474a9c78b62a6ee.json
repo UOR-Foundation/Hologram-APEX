@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.read.manager",
+  "parent": "hologram.read",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for read operation",
+  "manages": "hologram.read",
+  "operations": {
+    "validate": {
+      "description": "Validate read operation"
+    },
+    "create": {
+      "description": "Create read operation",
+      "artifact_submission": {
+        "description": "Submit read artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit read manifest"
+      }
+    },
+    "read": {
+      "description": "Read read operation"
+    },
+    "update": {
+      "description": "Update read operation"
+    },
+    "delete": {
+      "description": "Delete read operation"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Read operation lifecycle",
+    "operations": {
+      "create": {
+        "description": "Create operation"
+      },
+      "read": {
+        "description": "Read operation"
+      },
+      "update": {
+        "description": "Update operation"
+      },
+      "delete": {
+        "description": "Delete operation"
+      },
+      "validate": {
+        "description": "Validate operation"
+      }
+    }
+  }
+}

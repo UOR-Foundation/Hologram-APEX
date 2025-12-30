@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.update.test",
+  "parent": "hologram.update",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Tests for update operation",
+  "test": {
+    "version": "0.1.0",
+    "description": "Update operation tests",
+    "tests": [
+      {
+        "name": "test_update_validation",
+        "description": "Test update validation"
+      },
+      {
+        "name": "test_partial_update",
+        "description": "Test partial component update"
+      }
+    ]
+  }
+}

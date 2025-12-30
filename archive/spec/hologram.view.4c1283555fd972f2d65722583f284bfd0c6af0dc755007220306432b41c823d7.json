@@ -1,0 +1,42 @@
+{
+  "namespace": "hologram.view.interface",
+  "parent": "hologram.view",
+  "conformance": true,
+  "version": "1.0.0",
+  "description": "Interface for view conformance",
+  "interface": {
+    "version": "1.0.0",
+    "description": "Methods for rendering and managing views",
+    "methods": {
+      "render": {
+        "description": "Render component according to view definition",
+        "parameters": {
+          "component": "Component data to render",
+          "mode": "Rendering mode (web/terminal/api/print)",
+          "options": "Rendering options"
+        },
+        "returns": "Rendered content with metadata"
+      },
+      "getSections": {
+        "description": "Get configured sections for display",
+        "parameters": {
+          "component": "Component to get sections for"
+        },
+        "returns": "Array of section configurations"
+      },
+      "transform": {
+        "description": "Transform data for display",
+        "parameters": {
+          "data": "Data to transform",
+          "format": "Transform format (raw/markdown/json/diagram/graph/table)"
+        },
+        "returns": "Transformed data"
+      }
+    },
+    "events": {
+      "viewLoaded": "Emitted when view is loaded",
+      "sectionToggled": "Emitted when section is expanded/collapsed",
+      "actionTriggered": "Emitted when user action is triggered"
+    }
+  }
+}

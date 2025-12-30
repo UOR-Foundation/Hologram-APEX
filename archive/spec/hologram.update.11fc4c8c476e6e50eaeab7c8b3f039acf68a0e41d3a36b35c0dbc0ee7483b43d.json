@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.update.docs",
+  "parent": "hologram.update",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for update operation",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Update operation documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The update operation modifies existing components"
+      },
+      {
+        "title": "Validation",
+        "content": "Updates are validated before application"
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "namespace": "hologram.spec.docs",
+  "parent": "hologram.spec",
+  "conformance": true,
+  "version": "0.1.0",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Documentation for the Hologram base schema",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "hologram.spec defines the minimal required structure that every artifact in the Hologram system must have. It is self-referential - its own spec file validates against itself."
+      },
+      {
+        "title": "Required Fields",
+        "content": "namespace: Unique identifier for the component\nparent: The parent component's namespace (optional for root)\nconformance: Whether this is a conformance file\nversion: Semantic version of the component\ndescription: Human-readable description"
+      },
+      {
+        "title": "Self-Reference",
+        "content": "The hologram.spec.spec file contains these exact fields, making it self-validating. This bootstrap property ensures the system is grounded in itself."
+      }
+    ]
+  },
+  "description": "Documentation for hologram.spec"
+}

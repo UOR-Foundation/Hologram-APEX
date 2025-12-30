@@ -1,0 +1,25 @@
+{
+  "namespace": "hologram.spec.interface",
+  "parent": "hologram.spec",
+  "conformance": true,
+  "version": "0.1.0",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Interface for the Hologram base schema validator",
+    "methods": {
+      "validate": {
+        "description": "Validates a component artifact against the base schema"
+      },
+      "isConformance": {
+        "description": "Checks if an artifact is a conformance file"
+      },
+      "getNamespace": {
+        "description": "Extracts the namespace from an artifact"
+      },
+      "getParent": {
+        "description": "Extracts the parent namespace from an artifact"
+      }
+    }
+  },
+  "description": "Interface conformance for hologram.spec"
+}

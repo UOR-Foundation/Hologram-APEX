@@ -1,0 +1,22 @@
+{
+  "namespace": "hologram.manager.interface",
+  "parent": "hologram.manager",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for manager conformance",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for lifecycle management",
+    "methods": {
+      "createComponent": {
+        "description": "Create a new component"
+      },
+      "validateComponent": {
+        "description": "Validate component structure"
+      },
+      "manageLifecycle": {
+        "description": "Manage component lifecycle"
+      }
+    }
+  }
+}

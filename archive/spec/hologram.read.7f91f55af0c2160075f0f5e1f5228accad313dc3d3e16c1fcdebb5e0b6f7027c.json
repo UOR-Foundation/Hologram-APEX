@@ -1,0 +1,21 @@
+{
+  "namespace": "hologram.read.docs",
+  "parent": "hologram.read",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Documentation for read operation",
+  "docs": {
+    "version": "0.1.0",
+    "description": "Read operation documentation",
+    "sections": [
+      {
+        "title": "Overview",
+        "content": "The read operation retrieves component definitions"
+      },
+      {
+        "title": "Usage",
+        "content": "Specify namespace and optionally file to read"
+      }
+    ]
+  }
+}

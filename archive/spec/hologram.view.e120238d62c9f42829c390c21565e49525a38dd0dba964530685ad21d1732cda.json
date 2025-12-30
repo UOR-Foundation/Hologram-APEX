@@ -1,0 +1,63 @@
+{
+  "namespace": "hologram.view.build",
+  "parent": "hologram.view",
+  "conformance": true,
+  "version": "1.0.0",
+  "description": "Build conformance for view component",
+  "build": {
+    "type": "script",
+    "steps": [
+      {
+        "name": "compile",
+        "command": "tsc --project tsconfig.json",
+        "description": "Compile TypeScript view renderer"
+      },
+      {
+        "name": "bundle",
+        "command": "webpack --config webpack.config.js",
+        "description": "Bundle view templates and styles"
+      },
+      {
+        "name": "generate",
+        "command": "node dist/generator.js",
+        "description": "Generate static views from components"
+      },
+      {
+        "name": "optimize",
+        "command": "node dist/optimize.js",
+        "description": "Optimize assets for production"
+      }
+    ],
+    "artifacts": {
+      "schemas": [
+        "hologram.view.schema"
+      ],
+      "binaries": [
+        "dist/renderer.js",
+        "dist/generator.js"
+      ],
+      "libraries": [
+        "dist/lib/"
+      ],
+      "documentation": [
+        "docs/view-guide.md"
+      ]
+    },
+    "requirements": {
+      "tools": [
+        {
+          "name": "node",
+          "version": ">=18.0.0"
+        },
+        {
+          "name": "typescript",
+          "version": ">=5.0.0"
+        },
+        {
+          "name": "webpack",
+          "version": ">=5.0.0"
+        }
+      ]
+    }
+  }
+}

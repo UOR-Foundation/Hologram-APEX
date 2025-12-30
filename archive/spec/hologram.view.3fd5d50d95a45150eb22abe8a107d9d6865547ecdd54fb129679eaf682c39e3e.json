@@ -1,0 +1,50 @@
+{
+  "namespace": "hologram.view.view",
+  "parent": "hologram.view",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "View conformance for view component itself",
+  "view": {
+    "conformance_type": "view",
+    "template": {
+      "layout": "component-detail",
+      "style": "technical"
+    },
+    "sections": [
+      {
+        "id": "overview",
+        "title": "Overview",
+        "source": {
+          "type": "spec",
+          "field": "description",
+          "transform": "markdown"
+        }
+      },
+      {
+        "id": "schema",
+        "title": "Schema",
+        "source": {
+          "type": "spec",
+          "field": "conformance.schema",
+          "transform": "json"
+        }
+      }
+    ],
+    "rendering": {
+      "modes": {
+        "web": {
+          "enabled": true,
+          "framework": "static",
+          "features": [
+            "search",
+            "navigation"
+          ]
+        }
+      }
+    },
+    "navigation": {
+      "breadcrumbs": true,
+      "siblings": true
+    }
+  }
+}

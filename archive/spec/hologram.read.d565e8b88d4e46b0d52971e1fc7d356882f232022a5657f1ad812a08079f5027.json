@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.read.spec",
+  "title": "Hologram Read Operation",
+  "description": "Defines read operation for components",
+  "type": "object",
+  "namespace": "hologram.read.spec",
+  "parent": "hologram",
+  "conformance": false,
+  "version": "0.1.0",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string",
+      "const": "hologram.read"
+    },
+    "parent": {
+      "type": "string",
+      "const": "hologram"
+    },
+    "conformance": {
+      "type": "boolean"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "read": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "object",
+              "properties": {
+                "namespace": {
+                  "type": "string"
+                },
+                "file": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "namespace"
+              ]
+            },
+            "output": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "files": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "input",
+            "output"
+          ]
+        }
+      },
+      "required": [
+        "operation"
+      ]
+    }
+  },
+  "required": [
+    "namespace",
+    "parent",
+    "conformance",
+    "version",
+    "description",
+    "read"
+  ]
+}

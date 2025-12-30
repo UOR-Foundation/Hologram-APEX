@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.view.manager",
+  "parent": "hologram.view",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for view component",
+  "manages": "hologram.view",
+  "operations": {
+    "validate": {
+      "description": "Validate view conformance"
+    },
+    "create": {
+      "description": "Create new view definition",
+      "artifact_submission": {
+        "description": "Submit view artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit view manifest"
+      }
+    },
+    "read": {
+      "description": "Read view definition"
+    },
+    "update": {
+      "description": "Update existing view"
+    },
+    "delete": {
+      "description": "Delete view definition"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "View component lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create new view"
+      },
+      "read": {
+        "description": "Read view configuration"
+      },
+      "update": {
+        "description": "Update view"
+      },
+      "delete": {
+        "description": "Delete view"
+      },
+      "validate": {
+        "description": "Validate view structure"
+      }
+    }
+  }
+}

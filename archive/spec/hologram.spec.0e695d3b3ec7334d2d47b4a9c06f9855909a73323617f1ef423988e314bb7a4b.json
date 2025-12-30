@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "hologram.spec",
+  "namespace": "hologram.spec",
+  "conformance": false,
+  "version": "0.1.0",
+  "description": "The base schema that defines the minimal structure every Hologram component must have",
+  "title": "Hologram Base Schema",
+  "type": "object",
+  "properties": {
+    "namespace": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "The component's unique identifier within the Hologram system"
+    },
+    "parent": {
+      "type": "string",
+      "pattern": "^hologram(\\.[a-z][a-z0-9]*)*$",
+      "description": "The parent component's namespace (optional for root components)"
+    },
+    "conformance": {
+      "type": "boolean",
+      "description": "Whether this artifact is a conformance file for another component"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version of the component"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the component or artifact"
+    }
+  },
+  "required": [
+    "namespace",
+    "conformance",
+    "version",
+    "description"
+  ],
+  "additionalProperties": true
+}

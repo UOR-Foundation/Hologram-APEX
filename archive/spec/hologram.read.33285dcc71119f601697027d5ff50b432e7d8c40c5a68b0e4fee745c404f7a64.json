@@ -1,0 +1,40 @@
+{
+  "namespace": "hologram.read.build",
+  "parent": "hologram.read",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Build conformance for hologram.read",
+  "build": {
+    "type": "npm",
+    "steps": [
+      {
+        "name": "install",
+        "command": "npm install"
+      },
+      {
+        "name": "build",
+        "command": "npm run build"
+      }
+    ],
+    "artifacts": {
+      "binaries": [],
+      "libraries": [
+        "dist/"
+      ],
+      "documentation": [],
+      "schemas": []
+    },
+    "requirements": {
+      "tools": [
+        {
+          "name": "node",
+          "version": ">=18.0.0"
+        },
+        {
+          "name": "npm",
+          "version": ">=8.0.0"
+        }
+      ]
+    }
+  }
+}

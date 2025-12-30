@@ -1,0 +1,60 @@
+{
+  "namespace": "hologram.test.manager",
+  "parent": "hologram.test",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Lifecycle management for test conformance",
+  "manages": "hologram.test",
+  "operations": {
+    "validate": {
+      "description": "Validate test conformance"
+    },
+    "create": {
+      "description": "Create test suite",
+      "artifact_submission": {
+        "description": "Submit test artifacts"
+      },
+      "manifest_submission": {
+        "description": "Submit test manifest"
+      }
+    },
+    "read": {
+      "description": "Read test suite"
+    },
+    "update": {
+      "description": "Update test suite"
+    },
+    "delete": {
+      "description": "Delete test suite"
+    }
+  },
+  "storage": {
+    "type": "filesystem"
+  },
+  "atlas": {
+    "canonical": true,
+    "deterministic": true,
+    "verifiable": true
+  },
+  "manager": {
+    "version": "0.1.0",
+    "description": "Test lifecycle operations",
+    "operations": {
+      "create": {
+        "description": "Create test suite"
+      },
+      "read": {
+        "description": "Read test suite"
+      },
+      "update": {
+        "description": "Update test suite"
+      },
+      "delete": {
+        "description": "Delete test suite"
+      },
+      "validate": {
+        "description": "Validate test suite"
+      }
+    }
+  }
+}

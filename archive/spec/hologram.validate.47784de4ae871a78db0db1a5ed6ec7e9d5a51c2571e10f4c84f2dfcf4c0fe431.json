@@ -1,0 +1,19 @@
+{
+  "namespace": "hologram.validate.interface",
+  "parent": "hologram.validate",
+  "conformance": true,
+  "version": "0.1.0",
+  "description": "Interface for validation component",
+  "interface": {
+    "version": "0.1.0",
+    "description": "Methods for component validation",
+    "methods": {
+      "validateComponent": {
+        "description": "Validate a component"
+      },
+      "getValidationRules": {
+        "description": "Get validation rules"
+      }
+    }
+  }
+}
