@@ -1,0 +1,28 @@
+FROM auser/hologram-devcontainer:latest as dev
+
+# Set environment variables for the container
+ENV RUST_BACKTRACE=1
+
+# Install mold linker for faster linking (up to 5-10x faster than default ld)
+# and sccache for caching compiled crates across clean builds
+USER root
+ARG MOLD_VERSION=2.34.1
+ARG SCCACHE_VERSION=0.12.0
+RUN ARCH=$(uname -m) && \
+    # Install mold
+    if [ "$ARCH" = "x86_64" ]; then MOLD_ARCH="x86_64"; else MOLD_ARCH="aarch64"; fi && \
+    curl -sL "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-${MOLD_ARCH}-linux.tar.gz" | tar xz -C /tmp && \
+    mv /tmp/mold-${MOLD_VERSION}-${MOLD_ARCH}-linux/bin/mold /usr/local/bin/ && \
+    mv /tmp/mold-${MOLD_VERSION}-${MOLD_ARCH}-linux/lib/mold /usr/local/lib/ && \
+    rm -rf /tmp/mold-${MOLD_VERSION}-${MOLD_ARCH}-linux && \
+    ln -sf /usr/local/bin/mold /usr/local/lib/mold/ld && \
+    # Install sccache
+    curl -sL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl.tar.gz" | tar xz -C /tmp && \
+    mv /tmp/sccache-v${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl/sccache /usr/local/bin/ && \
+    rm -rf /tmp/sccache-v${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl
+
+# Set the default user (if not already set in base image)
+USER vscode
+
+# Set the working directory
+WORKDIR /workspace
