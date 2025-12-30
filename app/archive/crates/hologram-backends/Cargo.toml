@@ -1,0 +1,87 @@
+[package]
+name = "hologram-backends"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Backend implementations for hologram kernels with Atlas ISA"
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# Internal dependencies
+hologram-compiler = { path = "../hologram-compiler" }
+atlas-core = { path = "../atlas-core" }
+hologram-common = { path = "../hologram-common" }
+
+# External dependencies
+thiserror.workspace = true
+tracing.workspace = true
+bytemuck.workspace = true
+rayon = { workspace = true, optional = true }
+parking_lot = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+bincode.workspace = true
+dashmap = "6.1"                                     # Lock-free concurrent HashMap for per-buffer locking
+
+# CUDA backend (NVIDIA GPUs)
+# Optional dependency - only enabled with "cuda" feature
+cudarc = { version = "0.12", optional = true, features = [
+    "nvrtc",
+    "cuda-12000",
+] }
+
+# WebGPU backend (WASM/Browser GPU acceleration)
+# Optional dependency - only enabled with "webgpu" feature
+wgpu = { version = "27.0.1", optional = true, features = ["webgpu"] }
+futures-channel = { version = "0.3", optional = true }
+futures = { version = "0.3", optional = true }
+
+# Metal backend (macOS/iOS only)
+[target.'cfg(target_vendor = "apple")'.dependencies]
+metal = "0.32"
+objc = "0.2"
+
+[features]
+default = ["threading"]
+threading = ["parking_lot", "rayon"]
+cuda = ["cudarc"]
+webgpu = ["wgpu", "futures-channel", "futures"]
+
+# Platform-specific memory locking for cache-resident boundary pools
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["memoryapi", "winnt"] }
+
+# WASM-specific dependencies for WebGPU async support
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Navigator",
+    "Gpu",
+    "Performance",
+] }
+getrandom = { workspace = true, features = ["js"] }
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# WASM test dependencies
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[[bench]]
+name = "webgpu_baseline"
+harness = false
+
+[[bench]]
+name = "workgroup_optimization"
+harness = false
