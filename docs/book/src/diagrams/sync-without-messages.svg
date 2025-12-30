@@ -1,0 +1,120 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+    <pattern id="grid2" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="10" r="1" fill="#d1d5db"/>
+    </pattern>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#333">
+    Synchronization Without Messages
+  </text>
+
+  <!-- Background grid showing shared coordinate space -->
+  <rect x="50" y="80" width="700" height="400" fill="url(#grid2)" opacity="0.5"/>
+
+  <!-- Time axis -->
+  <line x1="50" y1="480" x2="750" y2="480" stroke="#666" stroke-width="2"/>
+  <text x="400" y="510" font-family="Arial, sans-serif" font-size="14" text-anchor="middle" fill="#666">
+    Time →
+  </text>
+
+  <!-- Node A -->
+  <g transform="translate(200, 200)">
+    <circle cx="0" cy="0" r="50" fill="url(#nodeGrad)"/>
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">
+      Node A
+    </text>
+    <text x="0" y="-70" font-family="monospace" font-size="12" text-anchor="middle" fill="#333">
+      Coord: (12, 147)
+    </text>
+  </g>
+
+  <!-- Node B -->
+  <g transform="translate(400, 200)">
+    <circle cx="0" cy="0" r="50" fill="url(#nodeGrad)"/>
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">
+      Node B
+    </text>
+    <text x="0" y="-70" font-family="monospace" font-size="12" text-anchor="middle" fill="#333">
+      Coord: (24, 89)
+    </text>
+  </g>
+
+  <!-- Node C -->
+  <g transform="translate(600, 200)">
+    <circle cx="0" cy="0" r="50" fill="url(#nodeGrad)"/>
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">
+      Node C
+    </text>
+    <text x="0" y="-70" font-family="monospace" font-size="12" text-anchor="middle" fill="#333">
+      Coord: (36, 203)
+    </text>
+  </g>
+
+  <!-- Content-determined position -->
+  <g transform="translate(400, 350)">
+    <rect x="-100" y="-30" width="200" height="60" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" rx="5"/>
+    <text x="0" y="-5" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#92400e">
+      Shared State
+    </text>
+    <text x="0" y="15" font-family="monospace" font-size="12" text-anchor="middle" fill="#78350f">
+      Position: (18, 167)
+    </text>
+  </g>
+
+  <!-- Arrows showing all nodes know the position -->
+  <g stroke="#f59e0b" stroke-width="2" fill="none" stroke-dasharray="5,5">
+    <path d="M 200 250 Q 300 320 320 350"/>
+    <path d="M 400 250 L 400 320"/>
+    <path d="M 600 250 Q 500 320 480 350"/>
+  </g>
+
+  <!-- Explanation boxes -->
+  <g transform="translate(50, 520)">
+    <rect x="0" y="0" width="700" height="60" fill="#f9fafb" stroke="#d1d5db" stroke-width="1" rx="5"/>
+    <text x="10" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#333">
+      Key Principle:
+    </text>
+    <text x="10" y="40" font-family="Arial, sans-serif" font-size="13" fill="#666">
+      All nodes independently calculate the same position for any given content using deterministic hash functions.
+    </text>
+    <text x="10" y="55" font-family="Arial, sans-serif" font-size="13" fill="#666">
+      No messages needed - the content itself determines where it belongs in the 12,288 coordinate space.
+    </text>
+  </g>
+
+  <!-- Visual flow showing the process -->
+  <g transform="translate(100, 90)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">
+      1. Content arrives
+    </text>
+    <text x="200" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">
+      2. Hash(content)
+    </text>
+    <text x="380" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">
+      3. Map to coordinates
+    </text>
+    <text x="550" y="0" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">
+      4. All nodes agree
+    </text>
+
+    <!-- Arrows between steps -->
+    <g stroke="#666" stroke-width="1" fill="#666">
+      <path d="M 90 -3 L 180 -3" marker-end="url(#arrow2)"/>
+      <path d="M 280 -3 L 360 -3" marker-end="url(#arrow2)"/>
+      <path d="M 490 -3 L 530 -3" marker-end="url(#arrow2)"/>
+    </g>
+  </g>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow2" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L7,3 z" fill="#666"/>
+    </marker>
+  </defs>
+</svg>

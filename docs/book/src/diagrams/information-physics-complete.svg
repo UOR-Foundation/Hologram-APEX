@@ -1,0 +1,263 @@
+<svg width="1400" height="1000" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1000">
+  <defs>
+    <linearGradient id="physGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="infoGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#c084fc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9333ea;stop-opacity:1" />
+    </linearGradient>
+    <filter id="analogyShadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Title -->
+  <text x="700" y="40" font-family="Arial, sans-serif" font-size="30" font-weight="bold" text-anchor="middle" fill="#1f2937">
+    The Information-Physics Analogy: Complete Correspondence
+  </text>
+
+  <!-- Main Comparison -->
+  <g transform="translate(50, 100)">
+    <!-- Physics Column -->
+    <g>
+      <rect x="0" y="0" width="650" height="700" fill="url(#physGrad)" opacity="0.1" rx="10" filter="url(#analogyShadow)"/>
+      <text x="325" y="35" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#1e40af">
+        Physics
+      </text>
+
+      <!-- Lagrangian -->
+      <g transform="translate(30, 70)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1e40af">
+          Action Principle
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#2563eb">
+          S = ∫ L(q, q̇, t) dt
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Nature minimizes action - paths of least resistance
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          δS = 0 → Euler-Lagrange equations of motion
+        </text>
+      </g>
+
+      <!-- Conservation Laws -->
+      <g transform="translate(30, 190)">
+        <rect x="0" y="0" width="590" height="120" fill="white" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1e40af">
+          Noether's Theorem
+        </text>
+        <text x="20" y="50" font-family="Arial, sans-serif" font-size="12" fill="#2563eb">
+          • Time symmetry → Energy conservation: dE/dt = 0
+        </text>
+        <text x="20" y="70" font-family="Arial, sans-serif" font-size="12" fill="#2563eb">
+          • Space symmetry → Momentum conservation: dp/dt = 0
+        </text>
+        <text x="20" y="90" font-family="Arial, sans-serif" font-size="12" fill="#2563eb">
+          • Rotation symmetry → Angular momentum: dL/dt = 0
+        </text>
+        <text x="20" y="108" font-family="Arial, sans-serif" font-size="11" fill="#64748b">
+          Every symmetry yields a conservation law
+        </text>
+      </g>
+
+      <!-- Field Equations -->
+      <g transform="translate(30, 330)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1e40af">
+          Field Dynamics
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#2563eb">
+          ∇²φ - (1/c²)∂²φ/∂t² = ρ
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Wave equation governs field propagation
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          Speed of light c is fundamental limit
+        </text>
+      </g>
+
+      <!-- Symmetry Groups -->
+      <g transform="translate(30, 450)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1e40af">
+          Gauge Theory
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#2563eb">
+          U(1) × SU(2) × SU(3)
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Local gauge invariance determines interactions
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          Symmetry breaking creates mass and forces
+        </text>
+      </g>
+
+      <!-- Uncertainty -->
+      <g transform="translate(30, 570)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1e40af">
+          Heisenberg Uncertainty
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#2563eb">
+          ΔxΔp ≥ ℏ/2
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Fundamental limit to simultaneous knowledge
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          Measurement affects the system
+        </text>
+      </g>
+    </g>
+
+    <!-- Information Column -->
+    <g transform="translate(700, 0)">
+      <rect x="0" y="0" width="650" height="700" fill="url(#infoGrad2)" opacity="0.1" rx="10" filter="url(#analogyShadow)"/>
+      <text x="325" y="35" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#7c3aed">
+        Information (Hologram)
+      </text>
+
+      <!-- Computation Minimization -->
+      <g transform="translate(30, 70)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#9333ea" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#7c3aed">
+          Computation Minimization
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#9333ea">
+          C = ∫ L(S, Ṡ, t) dt
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Information seeks minimal transformation paths
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          δC = 0 → Optimal computation trajectories
+        </text>
+      </g>
+
+      <!-- Information Conservation -->
+      <g transform="translate(30, 190)">
+        <rect x="0" y="0" width="590" height="120" fill="white" stroke="#9333ea" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#7c3aed">
+          Information Conservation Laws
+        </text>
+        <text x="20" y="50" font-family="Arial, sans-serif" font-size="12" fill="#9333ea">
+          • Pattern symmetry → Resonance conservation: dR/dt = 0
+        </text>
+        <text x="20" y="70" font-family="Arial, sans-serif" font-size="12" fill="#9333ea">
+          • Cycle symmetry → Cycle conservation: dC/dt = 0
+        </text>
+        <text x="20" y="90" font-family="Arial, sans-serif" font-size="12" fill="#9333ea">
+          • Scale symmetry → Holographic conservation: dΦ/dt = 0
+        </text>
+        <text x="20" y="108" font-family="Arial, sans-serif" font-size="11" fill="#64748b">
+          Information symmetries yield computational invariants
+        </text>
+      </g>
+
+      <!-- Content Addressing -->
+      <g transform="translate(30, 330)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#9333ea" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#7c3aed">
+          Information Field
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#9333ea">
+          ∇²I - (1/v²)∂²I/∂t² = ρᵢ
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Information propagates through 12,288 space
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          768-cycle is fundamental propagation limit
+        </text>
+      </g>
+
+      <!-- Equivalence Classes -->
+      <g transform="translate(30, 450)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#9333ea" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#7c3aed">
+          Information Symmetry
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#9333ea">
+          96 Equivalence Classes
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          Natural classification from resonance evaluation
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          Pattern breaking creates information structure
+        </text>
+      </g>
+
+      <!-- Determinism -->
+      <g transform="translate(30, 570)">
+        <rect x="0" y="0" width="590" height="100" fill="white" stroke="#9333ea" stroke-width="2" rx="5" filter="url(#analogyShadow)"/>
+        <text x="295" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#7c3aed">
+          Computational Determinism
+        </text>
+        <text x="295" y="50" font-family="monospace" font-size="13" text-anchor="middle" fill="#9333ea">
+          H(content) → position (deterministic)
+        </text>
+        <text x="295" y="70" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#64748b">
+          No uncertainty in information placement
+        </text>
+        <text x="295" y="88" font-family="Arial, sans-serif" font-size="11" text-anchor="middle" fill="#64748b">
+          Observation doesn't affect information state
+        </text>
+      </g>
+    </g>
+
+    <!-- Connecting arrows -->
+    <g transform="translate(650, 120)">
+      <path d="M 0 0 L 50 0" stroke="#6b7280" stroke-width="2" marker-end="url(#arrowAnalogy)" opacity="0.6"/>
+    </g>
+    <g transform="translate(650, 250)">
+      <path d="M 0 0 L 50 0" stroke="#6b7280" stroke-width="2" marker-end="url(#arrowAnalogy)" opacity="0.6"/>
+    </g>
+    <g transform="translate(650, 380)">
+      <path d="M 0 0 L 50 0" stroke="#6b7280" stroke-width="2" marker-end="url(#arrowAnalogy)" opacity="0.6"/>
+    </g>
+    <g transform="translate(650, 500)">
+      <path d="M 0 0 L 50 0" stroke="#6b7280" stroke-width="2" marker-end="url(#arrowAnalogy)" opacity="0.6"/>
+    </g>
+    <g transform="translate(650, 620)">
+      <path d="M 0 0 L 50 0" stroke="#6b7280" stroke-width="2" marker-end="url(#arrowAnalogy)" opacity="0.6"/>
+    </g>
+  </g>
+
+  <!-- Key Insights -->
+  <g transform="translate(50, 830)">
+    <rect x="0" y="0" width="1300" height="140" fill="#fef3c7" stroke="#f59e0b" stroke-width="1" rx="5" filter="url(#analogyShadow)"/>
+
+    <text x="650" y="30" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#92400e">
+      Key Insights from the Analogy
+    </text>
+
+    <g transform="translate(50, 50)">
+      <text x="0" y="0" font-family="Arial, sans-serif" font-size="13" fill="#78350f">
+        1. <tspan font-weight="bold">Action → Computation</tspan>: Just as physics minimizes action, information minimizes computational paths
+      </text>
+      <text x="0" y="25" font-family="Arial, sans-serif" font-size="13" fill="#78350f">
+        2. <tspan font-weight="bold">Conservation Laws</tspan>: Both domains have fundamental quantities that cannot be created or destroyed
+      </text>
+      <text x="0" y="50" font-family="Arial, sans-serif" font-size="13" fill="#78350f">
+        3. <tspan font-weight="bold">Field Equations</tspan>: Information propagates through space like physical fields, obeying wave equations
+      </text>
+      <text x="0" y="75" font-family="Arial, sans-serif" font-size="13" fill="#78350f">
+        4. <tspan font-weight="bold">Symmetry → Structure</tspan>: Symmetries in information space create computational structures, like gauge symmetries create forces
+      </text>
+    </g>
+  </g>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrowAnalogy" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+</svg>

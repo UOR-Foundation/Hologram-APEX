@@ -1,0 +1,150 @@
+<svg width="1200" height="700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:1" />
+    </linearGradient>
+    <filter id="flowShadow">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Title -->
+  <text x="600" y="40" font-family="Arial, sans-serif" font-size="28" font-weight="bold" text-anchor="middle" fill="#1f2937">
+    Content-Determined Addressing: Complete Flow
+  </text>
+
+  <!-- Main Flow Diagram -->
+  <g transform="translate(100, 100)">
+    <!-- Step 1: Content Input -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="200" height="80" fill="#f3f4f6" stroke="#6b7280" stroke-width="2" rx="5" filter="url(#flowShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#1f2937">Step 1: Content Input</text>
+      <text x="100" y="45" font-family="monospace" font-size="11" text-anchor="middle" fill="#4b5563">{"user": "Alice",</text>
+      <text x="100" y="60" font-family="monospace" font-size="11" text-anchor="middle" fill="#4b5563"> "balance": 1000}</text>
+    </g>
+
+    <!-- Arrow -->
+    <path d="M 210 40 L 250 40" stroke="url(#flowGrad)" stroke-width="3" marker-end="url(#arrowFlow)"/>
+
+    <!-- Step 2: Canonicalization -->
+    <g transform="translate(260, 0)">
+      <rect x="0" y="0" width="200" height="80" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" rx="5" filter="url(#flowShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#92400e">Step 2: Canonicalize</text>
+      <text x="100" y="45" font-family="monospace" font-size="10" text-anchor="middle" fill="#78350f">Sort keys, normalize</text>
+      <text x="100" y="60" font-family="monospace" font-size="10" text-anchor="middle" fill="#78350f">{"balance":1000,"user":"Alice"}</text>
+    </g>
+
+    <!-- Arrow -->
+    <path d="M 470 40 L 510 40" stroke="url(#flowGrad)" stroke-width="3" marker-end="url(#arrowFlow)"/>
+
+    <!-- Step 3: Hash Generation -->
+    <g transform="translate(520, 0)">
+      <rect x="0" y="0" width="200" height="80" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#flowShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#1e40af">Step 3: SHA3-256 Hash</text>
+      <text x="100" y="45" font-family="monospace" font-size="9" text-anchor="middle" fill="#1e3a8a">0x7A3B9C4D5E6F...</text>
+      <text x="100" y="60" font-family="monospace" font-size="9" text-anchor="middle" fill="#1e3a8a">256-bit deterministic</text>
+    </g>
+
+    <!-- Arrow -->
+    <path d="M 730 40 L 770 40" stroke="url(#flowGrad)" stroke-width="3" marker-end="url(#arrowFlow)"/>
+
+    <!-- Step 4: Modulo Operation -->
+    <g transform="translate(780, 0)">
+      <rect x="0" y="0" width="200" height="80" fill="#e9d5ff" stroke="#8b5cf6" stroke-width="2" rx="5" filter="url(#flowShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#6b21a8">Step 4: Modulo 12288</text>
+      <text x="100" y="45" font-family="monospace" font-size="11" text-anchor="middle" fill="#581c87">Hash mod 12288</text>
+      <text x="100" y="60" font-family="monospace" font-size="11" text-anchor="middle" fill="#581c87">= 7439</text>
+    </g>
+  </g>
+
+  <!-- Detailed Breakdown -->
+  <g transform="translate(100, 220)">
+    <rect x="0" y="0" width="1000" height="240" fill="#f0fdf4" stroke="#10b981" stroke-width="1" rx="5" filter="url(#flowShadow)"/>
+
+    <text x="500" y="30" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#065f46">
+      Coordinate Calculation Detail
+    </text>
+
+    <!-- Position to coordinates -->
+    <g transform="translate(50, 60)">
+      <rect x="0" y="0" width="250" height="150" fill="#d1fae5" stroke="#059669" stroke-width="1" rx="5"/>
+      <text x="125" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#064e3b">Position → Coordinates</text>
+
+      <text x="20" y="50" font-family="monospace" font-size="12" fill="#065f46">Position: 7439</text>
+      <text x="20" y="75" font-family="monospace" font-size="12" fill="#065f46">Column = 7439 ÷ 256 = 29</text>
+      <text x="20" y="100" font-family="monospace" font-size="12" fill="#065f46">Row = 7439 mod 256 = 15</text>
+      <text x="20" y="125" font-family="monospace" font-size="12" font-weight="bold" fill="#047857">Coordinate: (29, 15)</text>
+    </g>
+
+    <!-- Visual grid location -->
+    <g transform="translate(320, 60)">
+      <rect x="0" y="0" width="300" height="150" fill="#d1fae5" stroke="#059669" stroke-width="1" rx="5"/>
+      <text x="150" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#064e3b">Location in Grid</text>
+
+      <!-- Mini grid visualization -->
+      <g transform="translate(20, 40)">
+        <rect x="0" y="0" width="260" height="90" fill="white" stroke="#6b7280" stroke-width="1"/>
+        <!-- Grid lines -->
+        <line x1="130" y1="0" x2="130" y2="90" stroke="#e5e7eb" stroke-width="1"/>
+        <line x1="0" y1="45" x2="260" y2="45" stroke="#e5e7eb" stroke-width="1"/>
+
+        <!-- Highlight position -->
+        <circle cx="145" cy="20" r="5" fill="#ef4444"/>
+        <text x="160" y="25" font-family="monospace" font-size="10" fill="#991b1b">(29,15)</text>
+
+        <!-- Labels -->
+        <text x="5" y="85" font-family="monospace" font-size="9" fill="#6b7280">0</text>
+        <text x="245" y="85" font-family="monospace" font-size="9" fill="#6b7280">47</text>
+        <text x="125" y="85" font-family="monospace" font-size="9" text-anchor="middle" fill="#6b7280">Columns</text>
+      </g>
+    </g>
+
+    <!-- Properties -->
+    <g transform="translate(650, 60)">
+      <rect x="0" y="0" width="300" height="150" fill="#d1fae5" stroke="#059669" stroke-width="1" rx="5"/>
+      <text x="150" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#064e3b">Key Properties</text>
+
+      <text x="20" y="50" font-family="Arial, sans-serif" font-size="12" fill="#065f46">✓ Deterministic: Same content → same address</text>
+      <text x="20" y="70" font-family="Arial, sans-serif" font-size="12" fill="#065f46">✓ No collisions: SHA3 ensures distribution</text>
+      <text x="20" y="90" font-family="Arial, sans-serif" font-size="12" fill="#065f46">✓ No central allocation needed</text>
+      <text x="20" y="110" font-family="Arial, sans-serif" font-size="12" fill="#065f46">✓ O(1) address calculation</text>
+      <text x="20" y="130" font-family="Arial, sans-serif" font-size="12" fill="#065f46">✓ Globally unique without coordination</text>
+    </g>
+  </g>
+
+  <!-- Comparison with Traditional -->
+  <g transform="translate(100, 490)">
+    <rect x="0" y="0" width="1000" height="180" fill="#fff7ed" stroke="#ea580c" stroke-width="1" rx="5" filter="url(#flowShadow)"/>
+
+    <text x="500" y="30" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#9a3412">
+      Traditional vs Content-Determined Addressing
+    </text>
+
+    <!-- Traditional -->
+    <g transform="translate(50, 60)">
+      <text x="0" y="0" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#c2410c">Traditional Addressing:</text>
+      <text x="0" y="25" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Requires ID generation (UUID, sequence)</text>
+      <text x="0" y="45" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Needs central registry or coordination</text>
+      <text x="0" y="65" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Address unrelated to content</text>
+      <text x="0" y="85" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Can have collisions or duplicates</text>
+    </g>
+
+    <!-- Content-Determined -->
+    <g transform="translate(500, 60)">
+      <text x="0" y="0" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#c2410c">Content-Determined:</text>
+      <text x="0" y="25" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Address emerges from content itself</text>
+      <text x="0" y="45" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• No coordination or registry needed</text>
+      <text x="0" y="65" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Content changes = address changes</text>
+      <text x="0" y="85" font-family="Arial, sans-serif" font-size="12" fill="#7c2d12">• Mathematically guaranteed uniqueness</text>
+    </g>
+  </g>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrowFlow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6366f1"/>
+    </marker>
+  </defs>
+</svg>

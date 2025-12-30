@@ -1,0 +1,102 @@
+<svg width="800" height="700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 700">
+  <defs>
+    <linearGradient id="classGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#818cf8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#333">
+    The 96 Equivalence Classes
+  </text>
+
+  <!-- Subtitle -->
+  <text x="400" y="70" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#666">
+    Natural Categorization of All Byte Values (0-255)
+  </text>
+
+  <!-- Main visualization: 8x12 grid of equivalence classes -->
+  <g transform="translate(100, 120)">
+    <!-- Draw 96 cells in 8 rows x 12 columns -->
+    <g id="classes">
+      <!-- Generate equivalence class cells -->
+      <rect x="0" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="25" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">0</text>
+
+      <rect x="50" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="75" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">1</text>
+
+      <rect x="100" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="125" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">2</text>
+
+      <rect x="150" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="175" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">3</text>
+
+      <rect x="200" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="225" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">4</text>
+
+      <rect x="250" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="275" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">5</text>
+
+      <rect x="300" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="325" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">6</text>
+
+      <rect x="350" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="375" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">7</text>
+
+      <rect x="400" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="425" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">8</text>
+
+      <rect x="450" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="475" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">9</text>
+
+      <rect x="500" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="525" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">10</text>
+
+      <rect x="550" y="0" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="575" y="30" font-family="monospace" font-size="12" text-anchor="middle" fill="white">11</text>
+
+      <!-- Row 2 -->
+      <rect x="0" y="50" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="25" y="80" font-family="monospace" font-size="12" text-anchor="middle" fill="white">12</text>
+
+      <rect x="50" y="50" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="75" y="80" font-family="monospace" font-size="12" text-anchor="middle" fill="white">13</text>
+
+      <!-- Continue pattern... showing subset for brevity -->
+      <text x="300" y="75" font-family="Arial" font-size="24" text-anchor="middle" fill="#333">...</text>
+
+      <!-- Last few -->
+      <rect x="500" y="350" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="525" y="380" font-family="monospace" font-size="12" text-anchor="middle" fill="white">94</text>
+
+      <rect x="550" y="350" width="50" height="50" fill="url(#classGrad)" stroke="#fff" stroke-width="2" rx="5"/>
+      <text x="575" y="380" font-family="monospace" font-size="12" text-anchor="middle" fill="white">95</text>
+    </g>
+  </g>
+
+  <!-- Mathematical explanation -->
+  <g transform="translate(100, 550)">
+    <rect x="0" y="0" width="600" height="80" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1" rx="5"/>
+    <text x="300" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#333">
+      Mathematical Foundation
+    </text>
+    <text x="300" y="50" font-family="monospace" font-size="14" text-anchor="middle" fill="#666">
+      256 byte values ÷ 96 classes = ~2.67 bytes per class
+    </text>
+    <text x="300" y="70" font-family="monospace" font-size="14" text-anchor="middle" fill="#666">
+      Distribution follows natural information density patterns
+    </text>
+  </g>
+
+  <!-- Properties -->
+  <g transform="translate(100, 650)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="14" fill="#333">
+      • Each class represents similar information patterns
+    </text>
+    <text x="350" y="0" font-family="Arial, sans-serif" font-size="14" fill="#333">
+      • Classification emerges from byte statistics
+    </text>
+  </g>
+</svg>

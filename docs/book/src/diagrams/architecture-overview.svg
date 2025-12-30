@@ -1,0 +1,99 @@
+<svg width="800" height="700" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 700">
+  <defs>
+    <linearGradient id="layer0" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#dc2626;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#991b1b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ea580c;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#c2410c;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d97706;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer3" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#84cc16;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#65a30d;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer4" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer5" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#06b6d4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891b2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer6" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="layer7" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#333">
+    Hologram Architecture Stack
+  </text>
+
+  <!-- Layer stack -->
+  <g transform="translate(100, 80)">
+    <!-- L7: APIs -->
+    <rect x="0" y="0" width="600" height="70" fill="url(#layer7)" rx="5"/>
+    <text x="30" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L7: APIs</text>
+    <text x="30" y="45" font-family="Arial, sans-serif" font-size="13" fill="white">GraphQL, REST/OpenAPI, CLI config, SDK types</text>
+    <text x="550" y="35" font-family="monospace" font-size="12" fill="white">User Layer</text>
+
+    <!-- L6: Transport -->
+    <rect x="0" y="75" width="600" height="70" fill="url(#layer6)" rx="5"/>
+    <text x="30" y="100" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L6: Transport</text>
+    <text x="30" y="120" font-family="Arial, sans-serif" font-size="13" fill="white">UORID, CAR packaging, registry/manifest, IPFS</text>
+    <text x="550" y="110" font-family="monospace" font-size="12" fill="white">Distribution</text>
+
+    <!-- L5: Runtime -->
+    <rect x="0" y="150" width="600" height="70" fill="url(#layer5)" rx="5"/>
+    <text x="30" y="175" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L5: Runtime</text>
+    <text x="30" y="195" font-family="Arial, sans-serif" font-size="13" fill="white">Schedule, SyncReceipt, capabilities/policy</text>
+    <text x="550" y="185" font-family="monospace" font-size="12" fill="white">Execution</text>
+
+    <!-- L4: Views -->
+    <rect x="0" y="225" width="600" height="70" fill="url(#layer4)" rx="5"/>
+    <text x="30" y="250" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L4: Views</text>
+    <text x="30" y="270" font-family="Arial, sans-serif" font-size="13" fill="white">JSON/CBOR/Parquet adapters with Φ round-trip proofs</text>
+    <text x="550" y="260" font-family="monospace" font-size="12" fill="white">Adapters</text>
+
+    <!-- L3: UOR-BC -->
+    <rect x="0" y="300" width="600" height="70" fill="url(#layer3)" rx="5"/>
+    <text x="30" y="325" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L3: UOR-BC</text>
+    <text x="30" y="345" font-family="Arial, sans-serif" font-size="13" fill="white">Module format, bytecode, opcodes, SvcDesc</text>
+    <text x="550" y="335" font-family="monospace" font-size="12" fill="white">Bytecode</text>
+
+    <!-- L2: ADL -->
+    <rect x="0" y="375" width="600" height="70" fill="url(#layer2)" rx="5"/>
+    <text x="30" y="400" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L2: ADL</text>
+    <text x="30" y="420" font-family="Arial, sans-serif" font-size="13" fill="white">Atlas-12288 data layout bindings, receipts</text>
+    <text x="550" y="410" font-family="monospace" font-size="12" fill="white">Layout</text>
+
+    <!-- L1: CIM -->
+    <rect x="0" y="450" width="600" height="70" fill="url(#layer1)" rx="5"/>
+    <text x="30" y="475" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L1: CIM</text>
+    <text x="30" y="495" font-family="Arial, sans-serif" font-size="13" fill="white">Component &amp; Interface Model - components, ports, contracts, proofs</text>
+    <text x="550" y="485" font-family="monospace" font-size="12" fill="white">Interfaces</text>
+
+    <!-- L0: SMM -->
+    <rect x="0" y="525" width="600" height="70" fill="url(#layer0)" rx="5"/>
+    <text x="30" y="550" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="white">L0: SMM</text>
+    <text x="30" y="570" font-family="Arial, sans-serif" font-size="13" fill="white">Standard Model of Models - root vocabulary &amp; invariants</text>
+    <text x="550" y="560" font-family="monospace" font-size="12" fill="white">Foundation</text>
+  </g>
+
+  <!-- Key principle -->
+  <g transform="translate(100, 690)">
+    <text x="300" y="0" font-family="Arial, sans-serif" font-size="14" font-style="italic" text-anchor="middle" fill="#666">
+      "No compiler in runtime - Runtime only resolves, verifies, links, and runs bytecode"
+    </text>
+  </g>
+</svg>

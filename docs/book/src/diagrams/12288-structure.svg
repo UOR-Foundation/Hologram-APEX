@@ -1,0 +1,76 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#e0e0e0" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#333">
+    The 12,288 Coordinate System
+  </text>
+
+  <!-- Subtitle -->
+  <text x="400" y="70" font-family="Arial, sans-serif" font-size="16" text-anchor="middle" fill="#666">
+    48 × 256 Matrix Structure
+  </text>
+
+  <!-- Main grid visualization -->
+  <g transform="translate(100, 120)">
+    <!-- Background -->
+    <rect x="0" y="0" width="600" height="300" fill="url(#grid)" stroke="#333" stroke-width="2"/>
+
+    <!-- Highlight some cells to show structure -->
+    <rect x="0" y="0" width="150" height="75" fill="url(#grad1)" opacity="0.3"/>
+    <rect x="450" y="225" width="150" height="75" fill="#667eea" opacity="0.3"/>
+
+    <!-- Column indicators -->
+    <text x="75" y="-10" font-family="monospace" font-size="14" text-anchor="middle" fill="#333">0...47</text>
+    <text x="300" y="-10" font-family="monospace" font-size="14" text-anchor="middle" fill="#333">Columns (48)</text>
+    <text x="525" y="-10" font-family="monospace" font-size="14" text-anchor="middle" fill="#333">47</text>
+
+    <!-- Row indicators -->
+    <text x="-40" y="40" font-family="monospace" font-size="14" text-anchor="middle" fill="#333">0</text>
+    <text x="-40" y="150" font-family="monospace" font-size="14" text-anchor="middle" fill="#333" transform="rotate(-90, -40, 150)">Rows (256)</text>
+    <text x="-40" y="280" font-family="monospace" font-size="14" text-anchor="middle" fill="#333">255</text>
+
+    <!-- Example coordinates -->
+    <circle cx="75" cy="37" r="5" fill="#f59e0b"/>
+    <text x="90" y="42" font-family="monospace" font-size="12" fill="#333">(1, 8)</text>
+
+    <circle cx="300" cy="150" r="5" fill="#f59e0b"/>
+    <text x="315" y="155" font-family="monospace" font-size="12" fill="#333">(24, 128)</text>
+
+    <circle cx="525" cy="262" r="5" fill="#f59e0b"/>
+    <text x="540" y="267" font-family="monospace" font-size="12" fill="#333">(47, 240)</text>
+  </g>
+
+  <!-- Key properties -->
+  <g transform="translate(100, 460)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#333">
+      Key Properties:
+    </text>
+    <text x="0" y="30" font-family="Arial, sans-serif" font-size="14" fill="#666">
+      • Total Coordinates: 48 × 256 = 12,288
+    </text>
+    <text x="0" y="55" font-family="Arial, sans-serif" font-size="14" fill="#666">
+      • Natural byte alignment (256 rows = 2⁸)
+    </text>
+    <text x="0" y="80" font-family="Arial, sans-serif" font-size="14" fill="#666">
+      • Uniform distribution across coordinate space
+    </text>
+    <text x="400" y="30" font-family="Arial, sans-serif" font-size="14" fill="#666">
+      • Content determines position automatically
+    </text>
+    <text x="400" y="55" font-family="Arial, sans-serif" font-size="14" fill="#666">
+      • No central allocation or management
+    </text>
+    <text x="400" y="80" font-family="Arial, sans-serif" font-size="14" fill="#666">
+      • Globally unique without coordination
+    </text>
+  </g>
+</svg>

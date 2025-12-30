@@ -1,0 +1,152 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="physicsGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="infoGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6d28d9;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Title -->
+  <text x="400" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#333">
+    The Information-Physics Analogy
+  </text>
+
+  <!-- Two columns: Physics and Information -->
+  <g transform="translate(50, 100)">
+    <!-- Physics column -->
+    <rect x="0" y="0" width="330" height="450" fill="url(#physicsGrad)" opacity="0.1" rx="10"/>
+    <text x="165" y="30" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#1e40af">
+      Physics
+    </text>
+
+    <!-- Physics concepts -->
+    <g transform="translate(20, 60)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#3b82f6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Action Minimization
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        S = ∫ L dt → minimum
+      </text>
+    </g>
+
+    <g transform="translate(20, 140)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#3b82f6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Conservation Laws
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        Energy, Momentum, Angular Momentum
+      </text>
+    </g>
+
+    <g transform="translate(20, 220)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#3b82f6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Field Equations
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        ∇²φ = ρ (Poisson equation)
+      </text>
+    </g>
+
+    <g transform="translate(20, 300)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#3b82f6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Symmetry Groups
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        SO(3), SU(2), U(1)
+      </text>
+    </g>
+
+    <g transform="translate(20, 380)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#3b82f6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Gauge Invariance
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        Local symmetry preservation
+      </text>
+    </g>
+  </g>
+
+  <!-- Information column -->
+  <g transform="translate(420, 100)">
+    <rect x="0" y="0" width="330" height="450" fill="url(#infoGrad)" opacity="0.1" rx="10"/>
+    <text x="165" y="30" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#6d28d9">
+      Information (Hologram)
+    </text>
+
+    <!-- Information concepts -->
+    <g transform="translate(20, 60)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#8b5cf6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Computation Minimization
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        Minimize transformations to result
+      </text>
+    </g>
+
+    <g transform="translate(20, 140)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#8b5cf6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Information Conservation
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        R, C, Φ, ℛ invariants
+      </text>
+    </g>
+
+    <g transform="translate(20, 220)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#8b5cf6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Content Addressing
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        Position = f(content)
+      </text>
+    </g>
+
+    <g transform="translate(20, 300)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#8b5cf6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        96 Equivalence Classes
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        Natural information symmetries
+      </text>
+    </g>
+
+    <g transform="translate(20, 380)">
+      <rect x="0" y="0" width="290" height="60" fill="white" stroke="#8b5cf6" stroke-width="2" rx="5"/>
+      <text x="145" y="25" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">
+        Schema Independence
+      </text>
+      <text x="145" y="45" font-family="Arial, sans-serif" font-size="12" text-anchor="middle" fill="#666">
+        Computation invariant to representation
+      </text>
+    </g>
+  </g>
+
+  <!-- Arrows connecting concepts -->
+  <g transform="translate(380, 160)">
+    <path d="M 0 0 L 40 0" stroke="#666" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 0 80 L 40 0" stroke="#666" stroke-width="2" marker-end="url(#arrow)" opacity="0.5"/>
+    <path d="M 0 160 L 40 0" stroke="#666" stroke-width="2" marker-end="url(#arrow)" opacity="0.5"/>
+    <path d="M 0 240 L 40 0" stroke="#666" stroke-width="2" marker-end="url(#arrow)" opacity="0.5"/>
+    <path d="M 0 320 L 40 0" stroke="#666" stroke-width="2" marker-end="url(#arrow)" opacity="0.5"/>
+  </g>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#666"/>
+    </marker>
+  </defs>
+</svg>

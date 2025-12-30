@@ -1,0 +1,175 @@
+<svg width="1400" height="900" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900">
+  <defs>
+    <linearGradient id="proofGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#059669;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#047857;stop-opacity:1" />
+    </linearGradient>
+    <filter id="proofShadow">
+      <feDropShadow dx="3" dy="3" stdDeviation="4" flood-opacity="0.2"/>
+    </filter>
+    <pattern id="gridPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="20" height="20" fill="#f9fafb"/>
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e5e7eb" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+
+  <!-- Title -->
+  <text x="700" y="40" font-family="Arial, sans-serif" font-size="30" font-weight="bold" text-anchor="middle" fill="#1f2937">
+    Proof-Carrying State: Complete Mechanism
+  </text>
+
+  <!-- Main Flow -->
+  <g transform="translate(100, 100)">
+    <!-- State S1 -->
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="200" height="150" fill="#dbeafe" stroke="#3b82f6" stroke-width="2" rx="5" filter="url(#proofShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#1e40af">State S1</text>
+      <text x="100" y="50" font-family="monospace" font-size="11" text-anchor="middle" fill="#1e3a8a">Hash: 0xAB34...</text>
+      <text x="100" y="70" font-family="monospace" font-size="11" text-anchor="middle" fill="#1e3a8a">R: 847</text>
+      <text x="100" y="90" font-family="monospace" font-size="11" text-anchor="middle" fill="#1e3a8a">C: 256</text>
+      <text x="100" y="110" font-family="monospace" font-size="11" text-anchor="middle" fill="#1e3a8a">Phi: 0.618</text>
+      <text x="100" y="130" font-family="monospace" font-size="11" text-anchor="middle" fill="#1e3a8a">Reynolds: 1.73</text>
+    </g>
+
+    <!-- Transformation -->
+    <g transform="translate(250, 0)">
+      <rect x="0" y="0" width="200" height="150" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" rx="5" filter="url(#proofShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#92400e">Transform T</text>
+      <text x="100" y="50" font-family="monospace" font-size="11" text-anchor="middle" fill="#78350f">Op: UPDATE</text>
+      <text x="100" y="70" font-family="monospace" font-size="11" text-anchor="middle" fill="#78350f">Field: balance</text>
+      <text x="100" y="90" font-family="monospace" font-size="11" text-anchor="middle" fill="#78350f">Value: +500</text>
+      <text x="100" y="110" font-family="monospace" font-size="11" text-anchor="middle" fill="#78350f">Time: t1</text>
+      <text x="100" y="130" font-family="monospace" font-size="11" text-anchor="middle" fill="#78350f">Actor: A1</text>
+    </g>
+
+    <!-- Proof Generation -->
+    <g transform="translate(500, 0)">
+      <rect x="0" y="0" width="300" height="150" fill="url(#proofGrad)" rx="5" filter="url(#proofShadow)"/>
+      <text x="150" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="white">Proof Pi</text>
+      <text x="20" y="50" font-family="monospace" font-size="10" fill="white">1. Pre-state valid: verify(S1)</text>
+      <text x="20" y="70" font-family="monospace" font-size="10" fill="white">2. Transform authorized: check(T, A1)</text>
+      <text x="20" y="90" font-family="monospace" font-size="10" fill="white">3. Conservation holds: R+C+Phi+Reynolds</text>
+      <text x="20" y="110" font-family="monospace" font-size="10" fill="white">4. Post-state valid: verify(S2)</text>
+      <text x="20" y="130" font-family="monospace" font-size="10" fill="white">5. Hash chain: H(S1||T) = H(S2)</text>
+    </g>
+
+    <!-- State S2 -->
+    <g transform="translate(850, 0)">
+      <rect x="0" y="0" width="200" height="150" fill="#dcfce7" stroke="#22c55e" stroke-width="2" rx="5" filter="url(#proofShadow)"/>
+      <text x="100" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#15803d">State S2</text>
+      <text x="100" y="50" font-family="monospace" font-size="11" text-anchor="middle" fill="#166534">Hash: 0xCD56...</text>
+      <text x="100" y="70" font-family="monospace" font-size="11" text-anchor="middle" fill="#166534">R: 847</text>
+      <text x="100" y="90" font-family="monospace" font-size="11" text-anchor="middle" fill="#166534">C: 256</text>
+      <text x="100" y="110" font-family="monospace" font-size="11" text-anchor="middle" fill="#166534">Phi: 0.618</text>
+      <text x="100" y="130" font-family="monospace" font-size="11" text-anchor="middle" fill="#166534">Reynolds: 1.73</text>
+    </g>
+
+    <!-- Arrows -->
+    <path d="M 200 75 L 250 75" stroke="#666" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 450 75 L 500 75" stroke="#666" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M 800 75 L 850 75" stroke="#666" stroke-width="2" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Proof Structure Details -->
+  <g transform="translate(100, 300)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#1f2937">Proof Components</text>
+
+    <!-- Component boxes -->
+    <g transform="translate(0, 30)">
+      <rect x="0" y="0" width="250" height="120" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" rx="5"/>
+      <text x="125" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#92400e">State Validity</text>
+      <text x="10" y="40" font-family="monospace" font-size="11" fill="#78350f">- Merkle root verification</text>
+      <text x="10" y="60" font-family="monospace" font-size="11" fill="#78350f">- Signature validation</text>
+      <text x="10" y="80" font-family="monospace" font-size="11" fill="#78350f">- Timestamp ordering</text>
+      <text x="10" y="100" font-family="monospace" font-size="11" fill="#78350f">- Nonce uniqueness</text>
+    </g>
+
+    <g transform="translate(270, 30)">
+      <rect x="0" y="0" width="250" height="120" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5" rx="5"/>
+      <text x="125" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#15803d">Conservation Laws</text>
+      <text x="10" y="40" font-family="monospace" font-size="11" fill="#166534">- R preservation</text>
+      <text x="10" y="60" font-family="monospace" font-size="11" fill="#166534">- C cycle closure</text>
+      <text x="10" y="80" font-family="monospace" font-size="11" fill="#166534">- Phi holographic</text>
+      <text x="10" y="100" font-family="monospace" font-size="11" fill="#166534">- Reynolds flow</text>
+    </g>
+
+    <g transform="translate(540, 30)">
+      <rect x="0" y="0" width="250" height="120" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" rx="5"/>
+      <text x="125" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#4338ca">Cryptographic Binding</text>
+      <text x="10" y="40" font-family="monospace" font-size="11" fill="#3730a3">- Hash chain integrity</text>
+      <text x="10" y="60" font-family="monospace" font-size="11" fill="#3730a3">- Zero-knowledge proofs</text>
+      <text x="10" y="80" font-family="monospace" font-size="11" fill="#3730a3">- Commitment schemes</text>
+      <text x="10" y="100" font-family="monospace" font-size="11" fill="#3730a3">- BLS signatures</text>
+    </g>
+
+    <g transform="translate(810, 30)">
+      <rect x="0" y="0" width="250" height="120" fill="#fce7f3" stroke="#ec4899" stroke-width="1.5" rx="5"/>
+      <text x="125" y="20" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#be185d">Authorization</text>
+      <text x="10" y="40" font-family="monospace" font-size="11" fill="#9f1239">- Capability tokens</text>
+      <text x="10" y="60" font-family="monospace" font-size="11" fill="#9f1239">- Policy evaluation</text>
+      <text x="10" y="80" font-family="monospace" font-size="11" fill="#9f1239">- Role verification</text>
+      <text x="10" y="100" font-family="monospace" font-size="11" fill="#9f1239">- Threshold signatures</text>
+    </g>
+  </g>
+
+  <!-- Mathematical Formulation -->
+  <g transform="translate(100, 480)">
+    <rect x="0" y="0" width="1200" height="100" fill="#f9fafb" stroke="#d1d5db" stroke-width="1" rx="5"/>
+    <text x="10" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#1f2937">Mathematical Formulation</text>
+    <text x="10" y="50" font-family="monospace" font-size="12" fill="#4b5563">Proof Pi = (H(S1), H(T), H(S2), Conservation(R,C,Phi,Reynolds), Signature, Timestamp)</text>
+    <text x="10" y="70" font-family="monospace" font-size="12" fill="#4b5563">Verify(Pi) = ValidState(S1) AND ValidTransform(T) AND Conservation(S1,T,S2) AND ValidState(S2)</text>
+    <text x="10" y="90" font-family="monospace" font-size="12" fill="#4b5563">Trust = Probabilistic guarantee: P(invalid proof accepted) &lt; 2^(-128)</text>
+  </g>
+
+  <!-- Benefits Section -->
+  <g transform="translate(100, 610)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#1f2937">Key Benefits</text>
+
+    <g transform="translate(0, 30)">
+      <circle cx="10" cy="10" r="5" fill="#10b981"/>
+      <text x="25" y="15" font-family="Arial, sans-serif" font-size="14" fill="#374151">Self-verifying: Any node can independently verify state validity</text>
+    </g>
+
+    <g transform="translate(0, 60)">
+      <circle cx="10" cy="10" r="5" fill="#10b981"/>
+      <text x="25" y="15" font-family="Arial, sans-serif" font-size="14" fill="#374151">Trustless: No need for central authority or consensus</text>
+    </g>
+
+    <g transform="translate(0, 90)">
+      <circle cx="10" cy="10" r="5" fill="#10b981"/>
+      <text x="25" y="15" font-family="Arial, sans-serif" font-size="14" fill="#374151">Efficient: Verification is O(1) regardless of history length</text>
+    </g>
+
+    <g transform="translate(600, 30)">
+      <circle cx="10" cy="10" r="5" fill="#10b981"/>
+      <text x="25" y="15" font-family="Arial, sans-serif" font-size="14" fill="#374151">Composable: Proofs can be combined and aggregated</text>
+    </g>
+
+    <g transform="translate(600, 60)">
+      <circle cx="10" cy="10" r="5" fill="#10b981"/>
+      <text x="25" y="15" font-family="Arial, sans-serif" font-size="14" fill="#374151">Privacy-preserving: ZK proofs hide sensitive data</text>
+    </g>
+
+    <g transform="translate(600, 90)">
+      <circle cx="10" cy="10" r="5" fill="#10b981"/>
+      <text x="25" y="15" font-family="Arial, sans-serif" font-size="14" fill="#374151">Deterministic: Same inputs always produce same proof</text>
+    </g>
+  </g>
+
+  <!-- Practical Example -->
+  <g transform="translate(100, 750)">
+    <rect x="0" y="0" width="1200" height="100" fill="#e0e7ff" stroke="#6366f1" stroke-width="1" rx="5"/>
+    <text x="10" y="25" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#4338ca">Practical Example: Database Transaction</text>
+    <text x="10" y="50" font-family="monospace" font-size="11" fill="#3730a3">BEGIN: State={balance:1000, version:5} | DEBIT: -200 | PROOF: Conservation OK, Auth OK</text>
+    <text x="10" y="70" font-family="monospace" font-size="11" fill="#3730a3">COMMIT: State={balance:800, version:6} | Proof ensures: No double-spend, Valid authorization, Audit trail</text>
+    <text x="10" y="90" font-family="monospace" font-size="11" fill="#3730a3">Any observer can verify this transition without accessing the database or trusting the operator</text>
+  </g>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#666"/>
+    </marker>
+  </defs>
+</svg>
