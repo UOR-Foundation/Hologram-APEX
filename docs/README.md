@@ -1,132 +1,50 @@
-# Hologramapp Documentation
+# Atlas (monorepo)
 
-This directory contains technical documentation for the hologramapp project.
+This repository (Atlas) is a monorepo composed from multiple projects. It contains code, docs, and CI configuration for the subprojects listed below.
 
-## Architecture & Design
+## Repository layout
 
-### [Backend Architecture](./BACKEND_ARCHITECTURE.md)
-**Essential reading for backend development**
+- app/ — (project)  
+- archive/ — (archival material)  
+- atlas/ — (core project)  
+- dev/ — (development tooling)  
+- docs/ — (consolidated documentation)
+- embeddings/ — (project)  
+- hologram/ — (project)  
+- mcp/ — (project)  
+- onnx/ — (project)  
+- sigmatics/ — (project)  
 
-Comprehensive explanation of the backend architecture design, including:
-- Why `instruction_ops` are free functions vs trait methods
-- Performance analysis and tradeoffs
-- Guidelines for implementing new backends (GPU, TPU, FPGA)
-- Testing strategies
-- Clear separation between backend-specific and shared operations
+## Documentation
 
-**Key takeaway**: The current design achieves optimal performance and maintainability by keeping shared instructions as free functions and only backend-specific operations as trait methods.
+All consolidated docs are in the `docs/` directory. Start with the `docs/index.md` TOC (or `docs/README.md`). Below are some pointers to the most commonly used documentation pages.
 
-### [Backend Trait Architecture](./BACKEND_TRAIT_ARCHITECTURE.md)
-Documentation of the two-trait architecture:
-- `Backend` trait: Public API (buffer/pool management, program execution)
-- `Executor` trait: Internal execution interface (instruction dispatch, synchronization)
+### Key documents and sections
+- [Overview, quick start, and FFI docs](docs/index.md)
+- [Architecture](ARCHITECTURE.md)
+- [Getting started and build instructions](guides/getting-started.md)
+- [API Reference](api/)
+- [Concepts and Design](concepts/)
+- [Examples and Tutorials](examples/)
+- [Testing and CI](testing/)
 
-Created during the refactoring that moved all execution logic into the `CpuExecutor` struct.
+If you're browsing on GitHub, `docs/index.md` or `docs/README.md` are a good place to start.
 
-### [CPU Backend Tracing](./CPU_BACKEND_TRACING.md)
-Comprehensive guide to the tracing instrumentation added to the CPU backend:
-- How to enable and configure tracing
-- Performance impact analysis
-- Example output and usage
-- Environment variables for configuration
-- Integration with `hologram-tracing` crate
+## CI and workflows
 
-## Sigmatics
-
-### [Sigmatics Guide](./SIGMATICS_GUIDE.md)
-User guide for the Sigmatics canonicalization engine:
-- Circuit compiler usage
-- Pattern-based canonicalization
-- 96-class geometric system
-- Generator operations
-- Transform algebra
-
-### [Sigmatics Implementation Review](./SIGMATICS_IMPLEMENTATION_REVIEW.md)
-Technical implementation details:
-- AST structure
-- Parser design
-- Rewrite engine
-- Canonicalization algorithms
-- Performance characteristics
-
-## Future Work
-
-### [Future Prompts](./FUTURE_PROMPTS.md)
-**Development roadmap and task queue**
-
-Contains planned features and improvements:
-- Move Sigmatics compilation from runtime to compile-time
-- Implement GPU backend
-- Implement TPU backend
-- Backend auto-selection
-- And more...
-
-This document serves as the task backlog for the project.
-
-## Project Guidelines
-
-See [../CLAUDE.md](../CLAUDE.md) for:
-- Development workflow
-- Code organization standards
-- Testing requirements
-- Documentation standards
-- Common patterns and best practices
+GitHub Actions workflows live in `.github/workflows/`. Workflows that were migrated from other repositories have been consolidated here — ensure per-workflow path filters are updated for this monorepo layout. Non-workflow GitHub configuration (issue templates, copilot instructions, changelog configuration, etc.) remain in `.github/`.
 
 ## Contributing
 
-When adding new documentation:
-1. Place `.md` files in the `/docs` directory
-2. Add entry to this README with brief description
-3. Update references in [CLAUDE.md](../CLAUDE.md)
-4. Use clear headers and table of contents for long documents
-5. Include code examples where appropriate
+- See `docs/` for contribution guidance.
+- For code style, testing, and local checks, refer to project-specific README files inside each subdirectory.
 
-## Quick Links
+## Quickstart
 
-### By Topic
+1. Clone the repo
+2. See the per-project README at `<project> / README.md` for build/run/test commands.
+3. To run monorepo CI locally, use your preferred runner or verify workflows via GitHub Actions.
 
-**Backend Development**:
-- [Backend Architecture](./BACKEND_ARCHITECTURE.md) - Design decisions
-- [Backend Trait Architecture](./BACKEND_TRAIT_ARCHITECTURE.md) - Trait design
-- [CPU Backend Tracing](./CPU_BACKEND_TRACING.md) - Performance monitoring
+## Contact / Maintainers
 
-**Sigmatics**:
-- [Sigmatics Guide](./SIGMATICS_GUIDE.md) - User guide
-- [Sigmatics Implementation](./SIGMATICS_IMPLEMENTATION_REVIEW.md) - Technical details
-
-**Planning**:
-- [Future Prompts](./FUTURE_PROMPTS.md) - Roadmap and task queue
-
-### By Audience
-
-**New Contributors**:
-1. Start with [CLAUDE.md](../CLAUDE.md) - Development guidelines
-2. Read [Backend Architecture](./BACKEND_ARCHITECTURE.md) - System design
-3. Review [Sigmatics Guide](./SIGMATICS_GUIDE.md) - Core concepts
-
-**Backend Implementers** (GPU, TPU, etc.):
-1. [Backend Architecture](./BACKEND_ARCHITECTURE.md) - **Must read**
-2. [Backend Trait Architecture](./BACKEND_TRAIT_ARCHITECTURE.md)
-3. [CPU Backend Tracing](./CPU_BACKEND_TRACING.md) - Add tracing to your backend
-
-**Performance Engineers**:
-1. [CPU Backend Tracing](./CPU_BACKEND_TRACING.md) - Monitoring tools
-2. [Backend Architecture](./BACKEND_ARCHITECTURE.md) - Performance analysis
-3. [Sigmatics Guide](./SIGMATICS_GUIDE.md) - Canonicalization optimization
-
-## Document Status
-
-| Document | Status | Last Updated | Maintenance |
-|----------|--------|--------------|-------------|
-| [Backend Architecture](./BACKEND_ARCHITECTURE.md) | ✅ Current | 2025-10-28 | Update when adding new backends |
-| [Backend Trait Architecture](./BACKEND_TRAIT_ARCHITECTURE.md) | ✅ Current | 2024-12 | Update if trait design changes |
-| [CPU Backend Tracing](./CPU_BACKEND_TRACING.md) | ✅ Current | 2025-10-28 | Update when adding new metrics |
-| [Sigmatics Guide](./SIGMATICS_GUIDE.md) | ✅ Current | 2024 | Update with new features |
-| [Sigmatics Implementation](./SIGMATICS_IMPLEMENTATION_REVIEW.md) | ✅ Current | 2024 | Update with major changes |
-| [Future Prompts](./FUTURE_PROMPTS.md) | 🔄 Living Document | Ongoing | Update as tasks complete |
-
----
-
-**Note**: All documentation follows the project standard that `.md` files belong in `/docs`, with two exceptions:
-- `README.md` - Project overview at repository root
-- `CLAUDE.md` - Development guide at repository root
+- Maintained by the CitizenGardens-org organization.

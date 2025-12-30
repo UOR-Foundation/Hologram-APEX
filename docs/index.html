@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hologram Documentation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .container {
+            background: white;
+            border-radius: 1rem;
+            padding: 3rem;
+            max-width: 900px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            font-size: 2.5rem;
+        }
+        .subtitle {
+            color: #718096;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+        .books {
+            display: grid;
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .book-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .book-card:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        .book-title {
+            font-size: 1.5rem;
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+        .book-desc {
+            color: #718096;
+            margin-bottom: 1rem;
+        }
+        .book-links {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.9rem;
+        }
+        .book-links a, .book-links span {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .book-links a:hover {
+            text-decoration: underline;
+        }
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            color: #a0aec0;
+            font-size: 0.9rem;
+        }
+        footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 600px) {
+            .container {
+                padding: 2rem;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hologram Documentation</h1>
+        <p class="subtitle">Comprehensive documentation for the Hologram platform</p>
+
+        <div class="books">
+            <a href="./book/" class="book-card">
+                <div class="book-title">The Physics of Information</div>
+                <div class="book-desc">Fundamental concepts and theoretical foundations of Hologram</div>
+                <div class="book-links">
+                    <span>📖 Read Online</span>
+                </div>
+            </a>
+
+            <a href="./hologram-cs/" class="book-card">
+                <div class="book-title">Computer Science Formalization</div>
+                <div class="book-desc">Complete computer science formalization of the Hologram model of computation</div>
+                <div class="book-links">
+                    <span>📖 Read Online</span>
+                </div>
+            </a>
+
+            <a href="./hologram-cp/" class="book-card">
+                <div class="book-title">Container Engine and Platform</div>
+                <div class="book-desc">Complete conceptual model for the Hologram Container Engine and Platform</div>
+                <div class="book-links">
+                    <span>📖 Read Online</span>
+                </div>
+            </a>
+        </div>
+
+        <footer>
+            Built with <a href="https://rust-lang.github.io/mdBook/">mdBook</a>
+        </footer>
+    </div>
+</body>
+</html>
