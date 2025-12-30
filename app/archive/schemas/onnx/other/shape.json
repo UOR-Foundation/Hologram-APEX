@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "shape_to_tensor",
+    "params": [
+      {
+        "name": "Shape",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "u32"
+          }
+        }
+      },
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "u32"
+          }
+        }
+      },
+      {
+        "name": "rank",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "rank"
+          }
+        },
+        "then_body": [
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Shape"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}
