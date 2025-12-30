@@ -1,0 +1,71 @@
+[package]
+name = "hrm-spec"
+version = "1.0.0"
+edition = "2021"
+authors = ["UOR Foundation"]
+description = "MoonshineHRM Specification - First-principles algebraic foundation with conformance tests"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/UOR-Foundation/sigmatics"
+documentation = "https://docs.rs/hrm-spec"
+
+[dependencies]
+# Exact arbitrary-precision arithmetic
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+
+# Algebraic number types
+rug = { version = "1.24", features = ["integer", "rational", "float"] }
+
+# Serialization for spec interchange
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Property-based testing framework
+proptest = { version = "1.4", optional = true }
+
+[dev-dependencies]
+# Conformance testing
+proptest = "1.4"
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Test utilities
+approx = "0.5"
+
+[features]
+default = ["conformance"]
+conformance = ["proptest"]
+benchmarks = []
+
+[[bench]]
+name = "projection"
+harness = false
+
+[[bench]]
+name = "lifting"
+harness = false
+
+[[bench]]
+name = "routing"
+harness = false
+
+[[bench]]
+name = "derived_ops"
+harness = false
+
+[lib]
+name = "hrm_spec"
+path = "src/lib.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.bench]
+inherits = "release"
