@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: prod/Dockerfile
+      target: production
+    volumes:
+      - ${PWD}:/app:cached
+    working_dir: /app
+    environment:
+      - NODE_ENV=production
+      - LLVM_SYS_110_PREFIX=/usr/lib/llvm-11
+      - RUST_BACKTRACE=1
+    # Remove privileged mode and host networking for production security
+    # Uncomment if needed for specific use cases
+    # privileged: false
+    # network_mode: "bridge"
+
+    # Production memory limits
+    deploy:
+      resources:
+        limits:
+          memory: 32G  # 32GB max for production
+        reservations:
+          memory: 8G   # 8GB reserved

@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: dev/Dockerfile
+      target: dev
+    volumes:
+      - ${PWD}:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cargo-cache:/home/vscode/.cargo/registry
+      - cargo-git-cache:/home/vscode/.cargo/git
+      # Mount host SSH directory (read-only)
+      - ${HOME}/.ssh:/tmp/.ssh-host:ro
+    working_dir: /workspace
+    command: sleep infinity
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    stdin_open: true
+    tty: true
+    environment:
+      - NODE_ENV=development
+      - LLVM_SYS_110_PREFIX=/usr/lib/llvm-11
+    network_mode: "host" # Allow access to supabase start services
+    # Memory limits for ONNX compiler
+    deploy:
+      resources:
+        limits:
+          memory: 64G  # 64GB max (for compiler-heavy workloads)
+        reservations:
+          memory: 16G  # 16GB reserved
+
+volumes:
+  cargo-cache:
+  cargo-git-cache:

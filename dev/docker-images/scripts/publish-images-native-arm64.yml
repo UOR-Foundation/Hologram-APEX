@@ -1,0 +1,279 @@
+# Alternative GitHub Actions workflow using native ARM64 runners
+# This is faster than QEMU emulation but requires ARM64 infrastructure
+#
+# Setup options:
+# 1. GitHub ARM64 runners (requires GitHub Team/Enterprise)
+# 2. Self-hosted ARM64 runner (Oracle Cloud free tier, AWS Graviton, Mac Mini, etc.)
+# 3. Docker Build Cloud
+#
+# To use this workflow:
+# 1. Copy this file to .github/workflows/publish-images-native-arm64.yml
+# 2. Setup ARM64 runners with label "arm64"
+# 3. Disable the default publish-images.yml or rename it
+
+name: Build and Publish Docker Images (Native ARM64)
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        default: 'latest'
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME || 'yourorgname' }}
+  IMAGE_NAME: hologram-devcontainer
+  PYTHON_VERSION: 3.12
+  NODE_VERSION: 20
+  RUST_VERSION: nightly
+
+jobs:
+  # Test on AMD64 (standard GitHub runner)
+  test-amd64:
+    name: Test Images (AMD64)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [dev, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION=${{ github.event.inputs.version }}
+          else
+            VERSION=latest
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build ${{ matrix.variant }} image (amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.variant }}/Dockerfile
+          target: ${{ matrix.variant == 'dev' && 'dev' || 'production' }}
+          platforms: linux/amd64
+          build-args: |
+            PYTHON_VARIANT=${{ matrix.variant == 'dev' && format('1-{0}-bullseye', env.PYTHON_VERSION) || format('{0}-slim-bullseye', env.PYTHON_VERSION) }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            RUST_VERSION=${{ env.RUST_VERSION }}
+          tags: test-${{ matrix.variant }}-amd64:${{ steps.version.outputs.version }}
+          load: true
+
+      - name: Test ${{ matrix.variant }} image
+        run: |
+          docker run --rm test-${{ matrix.variant }}-amd64:${{ steps.version.outputs.version }} bash -c " \
+            rustc --version && cargo --version && python3 --version && \
+            node --version && pnpm --version && sqlite3 --version && zig version"
+
+  # Test on ARM64 (self-hosted or GitHub ARM64 runner)
+  test-arm64:
+    name: Test Images (ARM64)
+    runs-on: [self-hosted, arm64]  # Change to 'ubuntu-latest-arm64' for GitHub ARM64 runners
+    strategy:
+      matrix:
+        variant: [dev, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION=${{ github.event.inputs.version }}
+          else
+            VERSION=latest
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build ${{ matrix.variant }} image (arm64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.variant }}/Dockerfile
+          target: ${{ matrix.variant == 'dev' && 'dev' || 'production' }}
+          platforms: linux/arm64
+          build-args: |
+            PYTHON_VARIANT=${{ matrix.variant == 'dev' && format('1-{0}-bullseye', env.PYTHON_VERSION) || format('{0}-slim-bullseye', env.PYTHON_VERSION) }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            RUST_VERSION=${{ env.RUST_VERSION }}
+          tags: test-${{ matrix.variant }}-arm64:${{ steps.version.outputs.version }}
+          load: true
+
+      - name: Test ${{ matrix.variant }} image
+        run: |
+          docker run --rm test-${{ matrix.variant }}-arm64:${{ steps.version.outputs.version }} bash -c " \
+            rustc --version && cargo --version && python3 --version && \
+            node --version && pnpm --version && sqlite3 --version && zig version"
+
+  # Build and push AMD64 images
+  build-amd64:
+    name: Build AMD64 Images
+    needs: [test-amd64, test-arm64]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        variant: [dev, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION=${{ github.event.inputs.version }}
+          else
+            VERSION=latest
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push ${{ matrix.variant }} (amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.variant }}/Dockerfile
+          target: ${{ matrix.variant == 'dev' && 'dev' || 'production' }}
+          platforms: linux/amd64
+          build-args: |
+            PYTHON_VARIANT=${{ matrix.variant == 'dev' && format('1-{0}-bullseye', env.PYTHON_VERSION) || format('{0}-slim-bullseye', env.PYTHON_VERSION) }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            RUST_VERSION=${{ env.RUST_VERSION }}
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}-amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Build and push ARM64 images on native ARM64 hardware
+  build-arm64:
+    name: Build ARM64 Images
+    needs: [test-amd64, test-arm64]
+    runs-on: [self-hosted, arm64]  # Change to 'ubuntu-latest-arm64' for GitHub ARM64 runners
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        variant: [dev, prod]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION=${{ github.event.inputs.version }}
+          else
+            VERSION=latest
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push ${{ matrix.variant }} (arm64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.variant }}/Dockerfile
+          target: ${{ matrix.variant == 'dev' && 'dev' || 'production' }}
+          platforms: linux/arm64
+          build-args: |
+            PYTHON_VARIANT=${{ matrix.variant == 'dev' && format('1-{0}-bullseye', env.PYTHON_VERSION) || format('{0}-slim-bullseye', env.PYTHON_VERSION) }}
+            NODE_VERSION=${{ env.NODE_VERSION }}
+            RUST_VERSION=${{ env.RUST_VERSION }}
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}-arm64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Create multi-arch manifests
+  create-manifest:
+    name: Create Multi-Arch Manifests
+    needs: [build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant: [dev, prod]
+    steps:
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          elif [[ "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION=${{ github.event.inputs.version }}
+          else
+            VERSION=latest
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Create and push manifest for versioned tag
+        run: |
+          docker buildx imagetools create -t \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }} \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}-amd64 \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}-arm64
+
+      - name: Create and push manifest for latest tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker buildx imagetools create -t \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-latest \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}-amd64 \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}-arm64
+
+      - name: Verify manifest
+        run: |
+          docker buildx imagetools inspect \
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:${{ matrix.variant }}-${{ steps.version.outputs.version }}
