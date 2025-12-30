@@ -1,0 +1,120 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "slice_1d",
+    "params": [
+      {
+        "name": "X",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "start",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      },
+      {
+        "name": "end",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "let",
+        "name": "length",
+        "value": {
+          "type": "binary_op",
+          "op": "sub",
+          "left": {
+            "type": "var",
+            "name": "end"
+          },
+          "right": {
+            "type": "var",
+            "name": "start"
+          }
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "length"
+          }
+        },
+        "then_body": [
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "X"
+              },
+              "index": {
+                "type": "binary_op",
+                "op": "add",
+                "left": {
+                  "type": "var",
+                  "name": "start"
+                },
+                "right": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}

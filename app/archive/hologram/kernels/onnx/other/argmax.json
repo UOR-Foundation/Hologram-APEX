@@ -1,0 +1,177 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "argmax",
+    "params": [
+      {
+        "name": "X",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "u32"
+          }
+        }
+      },
+      {
+        "name": "n",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "eq",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "literal",
+            "value": 0
+          }
+        },
+        "then_body": [
+          {
+            "type": "let",
+            "name": "max_val",
+            "value": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "X"
+              },
+              "index": {
+                "type": "literal",
+                "value": 0
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "max_idx",
+            "value": {
+              "type": "literal",
+              "value": 0
+            }
+          },
+          {
+            "type": "for",
+            "var": "i",
+            "start": {
+              "type": "literal",
+              "value": 1
+            },
+            "stop": {
+              "type": "var",
+              "name": "n"
+            },
+            "step": {
+              "type": "literal",
+              "value": 1
+            },
+            "body": [
+              {
+                "type": "if",
+                "condition": {
+                  "type": "binary_op",
+                  "op": "gt",
+                  "left": {
+                    "type": "index",
+                    "array": {
+                      "type": "var",
+                      "name": "X"
+                    },
+                    "index": {
+                      "type": "var",
+                      "name": "i"
+                    }
+                  },
+                  "right": {
+                    "type": "var",
+                    "name": "max_val"
+                  }
+                },
+                "then_body": [
+                  {
+                    "type": "assign",
+                    "target": {
+                      "type": "var",
+                      "name": "max_val"
+                    },
+                    "value": {
+                      "type": "index",
+                      "array": {
+                        "type": "var",
+                        "name": "X"
+                      },
+                      "index": {
+                        "type": "var",
+                        "name": "i"
+                      }
+                    }
+                  },
+                  {
+                    "type": "assign",
+                    "target": {
+                      "type": "var",
+                      "name": "max_idx"
+                    },
+                    "value": {
+                      "type": "var",
+                      "name": "i"
+                    }
+                  }
+                ],
+                "else_body": null
+              }
+            ]
+          },
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "literal",
+                "value": 0
+              }
+            },
+            "value": {
+              "type": "var",
+              "name": "max_idx"
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "vector_add",
+    "params": [
+      {
+        "name": "a",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "b",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "c",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "n",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "n"
+          }
+        },
+        "then_body": [
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "c"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "binary_op",
+              "op": "add",
+              "left": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "a"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              },
+              "right": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "b"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}

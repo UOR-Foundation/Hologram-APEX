@@ -1,0 +1,374 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "conv2d",
+    "params": [
+      {
+        "name": "X",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "W",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "H_in",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      },
+      {
+        "name": "W_in",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      },
+      {
+        "name": "K_h",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      },
+      {
+        "name": "K_w",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "let",
+        "name": "H_out",
+        "value": {
+          "type": "binary_op",
+          "op": "add",
+          "left": {
+            "type": "binary_op",
+            "op": "sub",
+            "left": {
+              "type": "var",
+              "name": "H_in"
+            },
+            "right": {
+              "type": "var",
+              "name": "K_h"
+            }
+          },
+          "right": {
+            "type": "literal",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "let",
+        "name": "W_out",
+        "value": {
+          "type": "binary_op",
+          "op": "add",
+          "left": {
+            "type": "binary_op",
+            "op": "sub",
+            "left": {
+              "type": "var",
+              "name": "W_in"
+            },
+            "right": {
+              "type": "var",
+              "name": "K_w"
+            }
+          },
+          "right": {
+            "type": "literal",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "let",
+        "name": "total",
+        "value": {
+          "type": "binary_op",
+          "op": "mul",
+          "left": {
+            "type": "var",
+            "name": "H_out"
+          },
+          "right": {
+            "type": "var",
+            "name": "W_out"
+          }
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "total"
+          }
+        },
+        "then_body": [
+          {
+            "type": "let",
+            "name": "out_i",
+            "value": {
+              "type": "binary_op",
+              "op": "unknown",
+              "left": {
+                "type": "var",
+                "name": "idx"
+              },
+              "right": {
+                "type": "var",
+                "name": "W_out"
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "out_j",
+            "value": {
+              "type": "binary_op",
+              "op": "mod",
+              "left": {
+                "type": "var",
+                "name": "idx"
+              },
+              "right": {
+                "type": "var",
+                "name": "W_out"
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "sum",
+            "value": {
+              "type": "literal",
+              "value": 0.0
+            }
+          },
+          {
+            "type": "for",
+            "var": "ki",
+            "start": {
+              "type": "literal",
+              "value": 0
+            },
+            "stop": {
+              "type": "var",
+              "name": "K_h"
+            },
+            "step": {
+              "type": "literal",
+              "value": 1
+            },
+            "body": [
+              {
+                "type": "for",
+                "var": "kj",
+                "start": {
+                  "type": "literal",
+                  "value": 0
+                },
+                "stop": {
+                  "type": "var",
+                  "name": "K_w"
+                },
+                "step": {
+                  "type": "literal",
+                  "value": 1
+                },
+                "body": [
+                  {
+                    "type": "let",
+                    "name": "in_i",
+                    "value": {
+                      "type": "binary_op",
+                      "op": "add",
+                      "left": {
+                        "type": "var",
+                        "name": "out_i"
+                      },
+                      "right": {
+                        "type": "var",
+                        "name": "ki"
+                      }
+                    }
+                  },
+                  {
+                    "type": "let",
+                    "name": "in_j",
+                    "value": {
+                      "type": "binary_op",
+                      "op": "add",
+                      "left": {
+                        "type": "var",
+                        "name": "out_j"
+                      },
+                      "right": {
+                        "type": "var",
+                        "name": "kj"
+                      }
+                    }
+                  },
+                  {
+                    "type": "let",
+                    "name": "x_val",
+                    "value": {
+                      "type": "index",
+                      "array": {
+                        "type": "var",
+                        "name": "X"
+                      },
+                      "index": {
+                        "type": "binary_op",
+                        "op": "add",
+                        "left": {
+                          "type": "binary_op",
+                          "op": "mul",
+                          "left": {
+                            "type": "var",
+                            "name": "in_i"
+                          },
+                          "right": {
+                            "type": "var",
+                            "name": "W_in"
+                          }
+                        },
+                        "right": {
+                          "type": "var",
+                          "name": "in_j"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "let",
+                    "name": "w_val",
+                    "value": {
+                      "type": "index",
+                      "array": {
+                        "type": "var",
+                        "name": "W"
+                      },
+                      "index": {
+                        "type": "binary_op",
+                        "op": "add",
+                        "left": {
+                          "type": "binary_op",
+                          "op": "mul",
+                          "left": {
+                            "type": "var",
+                            "name": "ki"
+                          },
+                          "right": {
+                            "type": "var",
+                            "name": "K_w"
+                          }
+                        },
+                        "right": {
+                          "type": "var",
+                          "name": "kj"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "assign",
+                    "target": {
+                      "type": "var",
+                      "name": "sum"
+                    },
+                    "value": {
+                      "type": "binary_op",
+                      "op": "add",
+                      "left": {
+                        "type": "var",
+                        "name": "sum"
+                      },
+                      "right": {
+                        "type": "binary_op",
+                        "op": "mul",
+                        "left": {
+                          "type": "var",
+                          "name": "x_val"
+                        },
+                        "right": {
+                          "type": "var",
+                          "name": "w_val"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "var",
+              "name": "sum"
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}

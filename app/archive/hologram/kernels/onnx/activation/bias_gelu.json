@@ -1,0 +1,216 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "bias_gelu",
+    "params": [
+      {
+        "name": "X",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Bias",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "n",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "n"
+          }
+        },
+        "then_body": [
+          {
+            "type": "let",
+            "name": "x",
+            "value": {
+              "type": "binary_op",
+              "op": "add",
+              "left": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "X"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              },
+              "right": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "Bias"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "x_cubed",
+            "value": {
+              "type": "binary_op",
+              "op": "mul",
+              "left": {
+                "type": "binary_op",
+                "op": "mul",
+                "left": {
+                  "type": "var",
+                  "name": "x"
+                },
+                "right": {
+                  "type": "var",
+                  "name": "x"
+                }
+              },
+              "right": {
+                "type": "var",
+                "name": "x"
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "inner",
+            "value": {
+              "type": "binary_op",
+              "op": "mul",
+              "left": {
+                "type": "literal",
+                "value": 0.797885
+              },
+              "right": {
+                "type": "binary_op",
+                "op": "add",
+                "left": {
+                  "type": "var",
+                  "name": "x"
+                },
+                "right": {
+                  "type": "binary_op",
+                  "op": "mul",
+                  "left": {
+                    "type": "literal",
+                    "value": 0.044715
+                  },
+                  "right": {
+                    "type": "var",
+                    "name": "x_cubed"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "tanh_val",
+            "value": {
+              "type": "call",
+              "function": "tanh",
+              "args": [
+                {
+                  "type": "var",
+                  "name": "inner"
+                }
+              ]
+            }
+          },
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "binary_op",
+              "op": "mul",
+              "left": {
+                "type": "binary_op",
+                "op": "mul",
+                "left": {
+                  "type": "literal",
+                  "value": 0.5
+                },
+                "right": {
+                  "type": "var",
+                  "name": "x"
+                }
+              },
+              "right": {
+                "type": "binary_op",
+                "op": "add",
+                "left": {
+                  "type": "literal",
+                  "value": 1.0
+                },
+                "right": {
+                  "type": "var",
+                  "name": "tanh_val"
+                }
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}
