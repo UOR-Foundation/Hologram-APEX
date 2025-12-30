@@ -1,0 +1,110 @@
+{
+  "text_encoder": {
+    "model_path": "public/models/onnx/sd-turbo/text_encoder/model.onnx",
+    "inputs": {
+      "input_ids": {
+        "shape": [
+          0,
+          0
+        ],
+        "dtype": "int32"
+      }
+    },
+    "outputs": {
+      "last_hidden_state": {
+        "shape": [
+          0,
+          0,
+          1024
+        ],
+        "dtype": "float16"
+      },
+      "pooler_output": {
+        "shape": [
+          0,
+          1024
+        ],
+        "dtype": "float16"
+      }
+    },
+    "metadata": {
+      "ir_version": 7,
+      "producer_name": "onnxruntime.transformers",
+      "producer_version": "1.17.0"
+    }
+  },
+  "unet": {
+    "model_path": "public/models/onnx/sd-turbo/unet/model.onnx",
+    "inputs": {
+      "sample": {
+        "shape": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "dtype": "float16"
+      },
+      "timestep": {
+        "shape": [
+          0
+        ],
+        "dtype": "float16"
+      },
+      "encoder_hidden_states": {
+        "shape": [
+          0,
+          0,
+          1024
+        ],
+        "dtype": "float16"
+      }
+    },
+    "outputs": {
+      "out_sample": {
+        "shape": [
+          0,
+          4,
+          0,
+          0
+        ],
+        "dtype": "float16"
+      }
+    },
+    "metadata": {
+      "ir_version": 7,
+      "producer_name": "onnxruntime.transformers",
+      "producer_version": "1.17.0"
+    }
+  },
+  "vae_decoder": {
+    "model_path": "public/models/onnx/sd-turbo/vae_decoder/model.onnx",
+    "inputs": {
+      "latent_sample": {
+        "shape": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "dtype": "float16"
+      }
+    },
+    "outputs": {
+      "sample": {
+        "shape": [
+          0,
+          3,
+          0,
+          0
+        ],
+        "dtype": "float16"
+      }
+    },
+    "metadata": {
+      "ir_version": 7,
+      "producer_name": "onnxruntime.transformers",
+      "producer_version": "1.17.0"
+    }
+  }
+}
