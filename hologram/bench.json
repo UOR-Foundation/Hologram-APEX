@@ -1,0 +1,665 @@
+{
+  "timestamp": "2025-12-02T23:09:09.134229+00:00",
+  "commit": "1d58e11eb86034d265caa739737839492659b016",
+  "commit_short": "1d58e11",
+  "benchmark_count": 38,
+  "categories": {
+    "core/tensor": {
+      "description": "Tensor operations (reshape, transpose, slice)",
+      "benchmarks": [
+        "tensor_numel",
+        "tensor_transpose/256",
+        "tensor_transpose/16",
+        "tensor_transpose/64",
+        "view_ops_comparison/slice",
+        "view_ops_comparison/unsqueeze",
+        "view_ops_comparison/narrow",
+        "view_ops_comparison/transpose",
+        "view_ops_comparison/view_1d",
+        "view_ops_comparison/select"
+      ],
+      "count": 10
+    },
+    "core/buffer": {
+      "description": "Buffer allocation and memory operations",
+      "benchmarks": [
+        "buffer_copy_to_slice/256",
+        "buffer_copy_to_slice/4096",
+        "buffer_copy_to_slice/65536",
+        "buffer_copy_to_slice/16384",
+        "buffer_copy_to_slice/1024",
+        "buffer_to_vec/256",
+        "buffer_to_vec/4096",
+        "buffer_to_vec/65536",
+        "buffer_to_vec/16384",
+        "buffer_to_vec/1024",
+        "buffer_clone/256",
+        "buffer_clone/4096",
+        "buffer_clone/16384",
+        "buffer_clone/1024",
+        "buffer_canonicalize/256",
+        "buffer_canonicalize/4096",
+        "buffer_canonicalize/16384",
+        "buffer_canonicalize/1024",
+        "buffer_allocation/256",
+        "buffer_allocation/64",
+        "buffer_allocation/4096",
+        "buffer_allocation/16384",
+        "buffer_allocation/1024",
+        "buffer_copy_from_slice/256",
+        "buffer_copy_from_slice/4096",
+        "buffer_copy_from_slice/65536",
+        "buffer_copy_from_slice/16384",
+        "buffer_copy_from_slice/1024"
+      ],
+      "count": 28
+    }
+  },
+  "benchmarks": {
+    "tensor_numel": {
+      "category": "core/tensor",
+      "mean_ns": 0.7981788965481244,
+      "median_ns": 0.7728369709132257,
+      "std_dev_ns": 0.11307235628308739,
+      "slope_ns": 0.7966777036217011,
+      "confidence_interval": {
+        "lower_ns": 0.7797504345108482,
+        "upper_ns": 0.8229285528948063,
+        "confidence_level": 0.95
+      },
+      "full_id": "tensor_numel"
+    },
+    "buffer_copy_to_slice/256": {
+      "category": "core/buffer",
+      "mean_ns": 100.1375560760498,
+      "median_ns": 100.1375560760498,
+      "std_dev_ns": 1.6622258494984807,
+      "slope_ns": 99.43233337402344,
+      "confidence_interval": {
+        "lower_ns": 98.96218490600586,
+        "upper_ns": 101.31292724609375,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 1024
+      },
+      "full_id": "buffer_copy_to_slice/256"
+    },
+    "buffer_copy_to_slice/4096": {
+      "category": "core/buffer",
+      "mean_ns": 736.6215133666992,
+      "median_ns": 736.6215133666992,
+      "std_dev_ns": 20.538562540405213,
+      "slope_ns": 745.3352874755859,
+      "confidence_interval": {
+        "lower_ns": 722.0985565185547,
+        "upper_ns": 751.1444702148438,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 16384
+      },
+      "full_id": "buffer_copy_to_slice/4096"
+    },
+    "buffer_copy_to_slice/65536": {
+      "category": "core/buffer",
+      "mean_ns": 13910.855102539062,
+      "median_ns": 13910.855102539062,
+      "std_dev_ns": 13.774598920326126,
+      "slope_ns": 13905.01103515625,
+      "confidence_interval": {
+        "lower_ns": 13901.114990234375,
+        "upper_ns": 13920.59521484375,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 262144
+      },
+      "full_id": "buffer_copy_to_slice/65536"
+    },
+    "buffer_copy_to_slice/16384": {
+      "category": "core/buffer",
+      "mean_ns": 5045.210296630859,
+      "median_ns": 5045.210296630859,
+      "std_dev_ns": 84.64664619516108,
+      "slope_ns": 5081.122827148438,
+      "confidence_interval": {
+        "lower_ns": 4985.3560791015625,
+        "upper_ns": 5105.064514160156,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 65536
+      },
+      "full_id": "buffer_copy_to_slice/16384"
+    },
+    "buffer_copy_to_slice/1024": {
+      "category": "core/buffer",
+      "mean_ns": 240.94487762451172,
+      "median_ns": 240.94487762451172,
+      "std_dev_ns": 4.618647221200859,
+      "slope_ns": 242.90440368652344,
+      "confidence_interval": {
+        "lower_ns": 237.6790008544922,
+        "upper_ns": 244.21075439453125,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 4096
+      },
+      "full_id": "buffer_copy_to_slice/1024"
+    },
+    "buffer_to_vec/256": {
+      "category": "core/buffer",
+      "mean_ns": 97.46080169081688,
+      "median_ns": 97.46080169081688,
+      "std_dev_ns": 2.138798599490262,
+      "slope_ns": 98.36821708679199,
+      "confidence_interval": {
+        "lower_ns": 95.94844269752502,
+        "upper_ns": 98.97316068410873,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 1024
+      },
+      "full_id": "buffer_to_vec/256"
+    },
+    "buffer_to_vec/4096": {
+      "category": "core/buffer",
+      "mean_ns": 571.1623153686523,
+      "median_ns": 571.1623153686523,
+      "std_dev_ns": 9.987397752565139,
+      "slope_ns": 566.9250213623047,
+      "confidence_interval": {
+        "lower_ns": 564.1001586914062,
+        "upper_ns": 578.2244720458984,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 16384
+      },
+      "full_id": "buffer_to_vec/4096"
+    },
+    "buffer_to_vec/65536": {
+      "category": "core/buffer",
+      "mean_ns": 10311.346313476562,
+      "median_ns": 10311.346313476562,
+      "std_dev_ns": 92.9564024669164,
+      "slope_ns": 10350.784375,
+      "confidence_interval": {
+        "lower_ns": 10245.6162109375,
+        "upper_ns": 10377.076416015625,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 262144
+      },
+      "full_id": "buffer_to_vec/65536"
+    },
+    "buffer_to_vec/16384": {
+      "category": "core/buffer",
+      "mean_ns": 2454.389678955078,
+      "median_ns": 2454.389678955078,
+      "std_dev_ns": 6.659034826026366,
+      "slope_ns": 2457.2148681640624,
+      "confidence_interval": {
+        "lower_ns": 2449.6810302734375,
+        "upper_ns": 2459.0983276367188,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 65536
+      },
+      "full_id": "buffer_to_vec/16384"
+    },
+    "buffer_to_vec/1024": {
+      "category": "core/buffer",
+      "mean_ns": 201.90574836730957,
+      "median_ns": 201.90574836730957,
+      "std_dev_ns": 1.1876455917700521,
+      "slope_ns": 202.4096237182617,
+      "confidence_interval": {
+        "lower_ns": 201.06595611572266,
+        "upper_ns": 202.74554061889648,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 4096
+      },
+      "full_id": "buffer_to_vec/1024"
+    },
+    "buffer_clone/256": {
+      "category": "core/buffer",
+      "mean_ns": 7.60651969909668,
+      "median_ns": 7.60651969909668,
+      "std_dev_ns": 0.07048740097398344,
+      "slope_ns": 7.576614427566528,
+      "confidence_interval": {
+        "lower_ns": 7.556677579879761,
+        "upper_ns": 7.656361818313599,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 256
+      },
+      "full_id": "buffer_clone/256"
+    },
+    "buffer_clone/4096": {
+      "category": "core/buffer",
+      "mean_ns": 11.089674711227417,
+      "median_ns": 11.089674711227417,
+      "std_dev_ns": 0.05441899927290211,
+      "slope_ns": 11.066586685180663,
+      "confidence_interval": {
+        "lower_ns": 11.051194667816162,
+        "upper_ns": 11.128154754638672,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "buffer_clone/4096"
+    },
+    "buffer_clone/16384": {
+      "category": "core/buffer",
+      "mean_ns": 24.537879467010498,
+      "median_ns": 24.537879467010498,
+      "std_dev_ns": 0.16837767132538592,
+      "slope_ns": 24.609316062927245,
+      "confidence_interval": {
+        "lower_ns": 24.418818473815918,
+        "upper_ns": 24.656940460205078,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 16384
+      },
+      "full_id": "buffer_clone/16384"
+    },
+    "buffer_clone/1024": {
+      "category": "core/buffer",
+      "mean_ns": 7.491556525230408,
+      "median_ns": 7.491556525230408,
+      "std_dev_ns": 0.11657531699543415,
+      "slope_ns": 7.442097806930542,
+      "confidence_interval": {
+        "lower_ns": 7.409125328063965,
+        "upper_ns": 7.573987722396851,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 1024
+      },
+      "full_id": "buffer_clone/1024"
+    },
+    "buffer_canonicalize/256": {
+      "category": "core/buffer",
+      "mean_ns": 154.66556453704834,
+      "median_ns": 154.66556453704834,
+      "std_dev_ns": 2.091113528644491,
+      "slope_ns": 155.5527488708496,
+      "confidence_interval": {
+        "lower_ns": 153.1869239807129,
+        "upper_ns": 156.1442050933838,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 1024
+      },
+      "full_id": "buffer_canonicalize/256"
+    },
+    "buffer_canonicalize/4096": {
+      "category": "core/buffer",
+      "mean_ns": 823.2836837768555,
+      "median_ns": 823.2836837768555,
+      "std_dev_ns": 1.8958286348801738,
+      "slope_ns": 822.4793518066406,
+      "confidence_interval": {
+        "lower_ns": 821.9431304931641,
+        "upper_ns": 824.6242370605469,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 16384
+      },
+      "full_id": "buffer_canonicalize/4096"
+    },
+    "buffer_canonicalize/16384": {
+      "category": "core/buffer",
+      "mean_ns": 5894.723052978516,
+      "median_ns": 5894.723052978516,
+      "std_dev_ns": 38.57128521411959,
+      "slope_ns": 5878.358642578125,
+      "confidence_interval": {
+        "lower_ns": 5867.449035644531,
+        "upper_ns": 5921.9970703125,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 65536
+      },
+      "full_id": "buffer_canonicalize/16384"
+    },
+    "buffer_canonicalize/1024": {
+      "category": "core/buffer",
+      "mean_ns": 312.60257148742676,
+      "median_ns": 312.60257148742676,
+      "std_dev_ns": 8.98520368903963,
+      "slope_ns": 308.79047241210935,
+      "confidence_interval": {
+        "lower_ns": 306.24907302856445,
+        "upper_ns": 318.95606994628906,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 4096
+      },
+      "full_id": "buffer_canonicalize/1024"
+    },
+    "tensor_transpose/256": {
+      "category": "core/tensor",
+      "mean_ns": 90.72278888544504,
+      "median_ns": 89.76472691224745,
+      "std_dev_ns": 4.1031882853038955,
+      "slope_ns": 90.65480975906345,
+      "confidence_interval": {
+        "lower_ns": 89.98710936761739,
+        "upper_ns": 91.585203310861,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 65536
+      },
+      "full_id": "tensor_transpose/256"
+    },
+    "tensor_transpose/16": {
+      "category": "core/tensor",
+      "mean_ns": 24.19636761212293,
+      "median_ns": 23.849085686295343,
+      "std_dev_ns": 1.1443936069224294,
+      "slope_ns": 24.363203287040225,
+      "confidence_interval": {
+        "lower_ns": 23.994990217969598,
+        "upper_ns": 24.4392671827206,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 256
+      },
+      "full_id": "tensor_transpose/16"
+    },
+    "tensor_transpose/64": {
+      "category": "core/tensor",
+      "mean_ns": 26.431004928844033,
+      "median_ns": 26.171916019856965,
+      "std_dev_ns": 1.1168672037746743,
+      "slope_ns": 26.533449109274436,
+      "confidence_interval": {
+        "lower_ns": 26.243596725982936,
+        "upper_ns": 26.67488102682787,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "tensor_transpose/64"
+    },
+    "buffer_allocation/256": {
+      "category": "core/buffer",
+      "mean_ns": 333.62672424316406,
+      "median_ns": 333.62672424316406,
+      "std_dev_ns": 1.0094500649651446,
+      "slope_ns": 334.0549976348877,
+      "confidence_interval": {
+        "lower_ns": 332.912935256958,
+        "upper_ns": 334.3405132293701,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 256
+      },
+      "full_id": "buffer_allocation/256"
+    },
+    "buffer_allocation/64": {
+      "category": "core/buffer",
+      "mean_ns": 189.8037052154541,
+      "median_ns": 189.8037052154541,
+      "std_dev_ns": 6.686329799471597,
+      "slope_ns": 186.96693572998046,
+      "confidence_interval": {
+        "lower_ns": 185.07575607299805,
+        "upper_ns": 194.53165435791016,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 64
+      },
+      "full_id": "buffer_allocation/64"
+    },
+    "buffer_allocation/4096": {
+      "category": "core/buffer",
+      "mean_ns": 7352.264240264893,
+      "median_ns": 7352.264240264893,
+      "std_dev_ns": 2939.7853402916494,
+      "slope_ns": 8599.509529876708,
+      "confidence_interval": {
+        "lower_ns": 5273.522090911865,
+        "upper_ns": 9431.00638961792,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "buffer_allocation/4096"
+    },
+    "buffer_allocation/16384": {
+      "category": "core/buffer",
+      "mean_ns": 5956.91015625,
+      "median_ns": 5956.91015625,
+      "std_dev_ns": 124.53365756475266,
+      "slope_ns": 5904.075,
+      "confidence_interval": {
+        "lower_ns": 5868.8515625,
+        "upper_ns": 6044.96875,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 16384
+      },
+      "full_id": "buffer_allocation/16384"
+    },
+    "buffer_allocation/1024": {
+      "category": "core/buffer",
+      "mean_ns": 354.13446044921875,
+      "median_ns": 354.13446044921875,
+      "std_dev_ns": 4.689006158580581,
+      "slope_ns": 356.12383728027345,
+      "confidence_interval": {
+        "lower_ns": 350.81883239746094,
+        "upper_ns": 357.45008850097656,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 1024
+      },
+      "full_id": "buffer_allocation/1024"
+    },
+    "buffer_copy_from_slice/256": {
+      "category": "core/buffer",
+      "mean_ns": 50.37590265274048,
+      "median_ns": 50.37590265274048,
+      "std_dev_ns": 0.5001724984938196,
+      "slope_ns": 50.16369743347168,
+      "confidence_interval": {
+        "lower_ns": 50.02222728729248,
+        "upper_ns": 50.72957801818848,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 1024
+      },
+      "full_id": "buffer_copy_from_slice/256"
+    },
+    "buffer_copy_from_slice/4096": {
+      "category": "core/buffer",
+      "mean_ns": 291.7840919494629,
+      "median_ns": 291.7840919494629,
+      "std_dev_ns": 1.3083029153374635,
+      "slope_ns": 291.22902603149413,
+      "confidence_interval": {
+        "lower_ns": 290.85898208618164,
+        "upper_ns": 292.70920181274414,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 16384
+      },
+      "full_id": "buffer_copy_from_slice/4096"
+    },
+    "buffer_copy_from_slice/65536": {
+      "category": "core/buffer",
+      "mean_ns": 4741.816711425781,
+      "median_ns": 4741.816711425781,
+      "std_dev_ns": 3.053454880917251,
+      "slope_ns": 4740.521240234375,
+      "confidence_interval": {
+        "lower_ns": 4739.6575927734375,
+        "upper_ns": 4743.975830078125,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 262144
+      },
+      "full_id": "buffer_copy_from_slice/65536"
+    },
+    "buffer_copy_from_slice/16384": {
+      "category": "core/buffer",
+      "mean_ns": 832.0778923034668,
+      "median_ns": 832.0778923034668,
+      "std_dev_ns": 24.42643600769411,
+      "slope_ns": 821.714633178711,
+      "confidence_interval": {
+        "lower_ns": 814.805793762207,
+        "upper_ns": 849.3499908447266,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 65536
+      },
+      "full_id": "buffer_copy_from_slice/16384"
+    },
+    "buffer_copy_from_slice/1024": {
+      "category": "core/buffer",
+      "mean_ns": 83.71053743362427,
+      "median_ns": 83.71053743362427,
+      "std_dev_ns": 0.7184122518311098,
+      "slope_ns": 84.01533393859863,
+      "confidence_interval": {
+        "lower_ns": 83.20254325866699,
+        "upper_ns": 84.21853160858154,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Bytes": 4096
+      },
+      "full_id": "buffer_copy_from_slice/1024"
+    },
+    "view_ops_comparison/slice": {
+      "category": "core/tensor",
+      "mean_ns": 27.65705707901519,
+      "median_ns": 27.304209820159556,
+      "std_dev_ns": 1.8906918140904239,
+      "slope_ns": 27.408892393646518,
+      "confidence_interval": {
+        "lower_ns": 27.38530649400253,
+        "upper_ns": 28.089783499877615,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "view_ops_comparison/slice"
+    },
+    "view_ops_comparison/unsqueeze": {
+      "category": "core/tensor",
+      "mean_ns": 29.290299512599937,
+      "median_ns": 29.119047264732558,
+      "std_dev_ns": 0.7517733689200763,
+      "slope_ns": 29.349860942692672,
+      "confidence_interval": {
+        "lower_ns": 29.160909602618364,
+        "upper_ns": 29.4514224604474,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "view_ops_comparison/unsqueeze"
+    },
+    "view_ops_comparison/narrow": {
+      "category": "core/tensor",
+      "mean_ns": 28.5088858592139,
+      "median_ns": 28.239289395862045,
+      "std_dev_ns": 1.4526944331000307,
+      "slope_ns": 28.382187142072308,
+      "confidence_interval": {
+        "lower_ns": 28.29699299210237,
+        "upper_ns": 28.839682351293476,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "view_ops_comparison/narrow"
+    },
+    "view_ops_comparison/transpose": {
+      "category": "core/tensor",
+      "mean_ns": 26.380818698280283,
+      "median_ns": 26.261714281141998,
+      "std_dev_ns": 0.7146451277073007,
+      "slope_ns": 26.447943665222727,
+      "confidence_interval": {
+        "lower_ns": 26.252340602732573,
+        "upper_ns": 26.53231250086946,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "view_ops_comparison/transpose"
+    },
+    "view_ops_comparison/view_1d": {
+      "category": "core/tensor",
+      "mean_ns": 32.414327566897285,
+      "median_ns": 32.354729853481906,
+      "std_dev_ns": 0.5990781256328332,
+      "slope_ns": 32.447830345634934,
+      "confidence_interval": {
+        "lower_ns": 32.3045100760837,
+        "upper_ns": 32.53902514947746,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "view_ops_comparison/view_1d"
+    },
+    "view_ops_comparison/select": {
+      "category": "core/tensor",
+      "mean_ns": 28.039041809038117,
+      "median_ns": 27.88227384211434,
+      "std_dev_ns": 0.6550605037191386,
+      "slope_ns": 28.094369468049347,
+      "confidence_interval": {
+        "lower_ns": 27.921485027077356,
+        "upper_ns": 28.176042481195736,
+        "confidence_level": 0.95
+      },
+      "throughput": {
+        "Elements": 4096
+      },
+      "full_id": "view_ops_comparison/select"
+    }
+  }
+}

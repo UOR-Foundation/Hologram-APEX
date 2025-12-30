@@ -1,0 +1,249 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "skip_layer_norm",
+    "params": [
+      {
+        "name": "X",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Skip",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Gamma",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Beta",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "n",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      },
+      {
+        "name": "hidden",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "n"
+          }
+        },
+        "then_body": [
+          {
+            "type": "let",
+            "name": "val",
+            "value": {
+              "type": "binary_op",
+              "op": "add",
+              "left": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "X"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              },
+              "right": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "Skip"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "idx"
+                }
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "mean",
+            "value": {
+              "type": "literal",
+              "value": 0.0
+            }
+          },
+          {
+            "type": "let",
+            "name": "variance",
+            "value": {
+              "type": "literal",
+              "value": 0.0
+            }
+          },
+          {
+            "type": "let",
+            "name": "h_idx",
+            "value": {
+              "type": "binary_op",
+              "op": "mod",
+              "left": {
+                "type": "var",
+                "name": "idx"
+              },
+              "right": {
+                "type": "var",
+                "name": "hidden"
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "normalized",
+            "value": {
+              "type": "binary_op",
+              "op": "div",
+              "left": {
+                "type": "binary_op",
+                "op": "sub",
+                "left": {
+                  "type": "var",
+                  "name": "val"
+                },
+                "right": {
+                  "type": "var",
+                  "name": "mean"
+                }
+              },
+              "right": {
+                "type": "call",
+                "function": "sqrt",
+                "args": [
+                  {
+                    "type": "binary_op",
+                    "op": "add",
+                    "left": {
+                      "type": "var",
+                      "name": "variance"
+                    },
+                    "right": {
+                      "type": "literal",
+                      "value": 1e-05
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "binary_op",
+              "op": "add",
+              "left": {
+                "type": "binary_op",
+                "op": "mul",
+                "left": {
+                  "type": "var",
+                  "name": "normalized"
+                },
+                "right": {
+                  "type": "index",
+                  "array": {
+                    "type": "var",
+                    "name": "Gamma"
+                  },
+                  "index": {
+                    "type": "var",
+                    "name": "h_idx"
+                  }
+                }
+              },
+              "right": {
+                "type": "index",
+                "array": {
+                  "type": "var",
+                  "name": "Beta"
+                },
+                "index": {
+                  "type": "var",
+                  "name": "h_idx"
+                }
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}

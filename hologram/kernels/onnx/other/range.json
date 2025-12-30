@@ -1,0 +1,108 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "range_op",
+    "params": [
+      {
+        "name": "Y",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "start",
+        "type": {
+          "kind": "scalar",
+          "type": "f32"
+        }
+      },
+      {
+        "name": "delta",
+        "type": {
+          "kind": "scalar",
+          "type": "f32"
+        }
+      },
+      {
+        "name": "n",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "n"
+          }
+        },
+        "then_body": [
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Y"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "binary_op",
+              "op": "add",
+              "left": {
+                "type": "var",
+                "name": "start"
+              },
+              "right": {
+                "type": "binary_op",
+                "op": "mul",
+                "left": {
+                  "type": "call",
+                  "function": "f32",
+                  "args": [
+                    {
+                      "type": "var",
+                      "name": "idx"
+                    }
+                  ]
+                },
+                "right": {
+                  "type": "var",
+                  "name": "delta"
+                }
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}

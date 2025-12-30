@@ -1,0 +1,282 @@
+{
+  "version": "1.0",
+  "kernel": {
+    "name": "attention_scores",
+    "params": [
+      {
+        "name": "Q",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "K",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "Scores",
+        "type": {
+          "kind": "device_array",
+          "element_type": {
+            "kind": "scalar",
+            "type": "f32"
+          }
+        }
+      },
+      {
+        "name": "seq_len",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      },
+      {
+        "name": "d_model",
+        "type": {
+          "kind": "scalar",
+          "type": "u32"
+        }
+      }
+    ],
+    "body": [
+      {
+        "type": "let",
+        "name": "idx",
+        "value": {
+          "type": "call",
+          "function": "get_global_id",
+          "args": []
+        }
+      },
+      {
+        "type": "let",
+        "name": "total",
+        "value": {
+          "type": "binary_op",
+          "op": "mul",
+          "left": {
+            "type": "var",
+            "name": "seq_len"
+          },
+          "right": {
+            "type": "var",
+            "name": "seq_len"
+          }
+        }
+      },
+      {
+        "type": "if",
+        "condition": {
+          "type": "binary_op",
+          "op": "lt",
+          "left": {
+            "type": "var",
+            "name": "idx"
+          },
+          "right": {
+            "type": "var",
+            "name": "total"
+          }
+        },
+        "then_body": [
+          {
+            "type": "let",
+            "name": "i",
+            "value": {
+              "type": "binary_op",
+              "op": "unknown",
+              "left": {
+                "type": "var",
+                "name": "idx"
+              },
+              "right": {
+                "type": "var",
+                "name": "seq_len"
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "j",
+            "value": {
+              "type": "binary_op",
+              "op": "mod",
+              "left": {
+                "type": "var",
+                "name": "idx"
+              },
+              "right": {
+                "type": "var",
+                "name": "seq_len"
+              }
+            }
+          },
+          {
+            "type": "let",
+            "name": "dot",
+            "value": {
+              "type": "literal",
+              "value": 0.0
+            }
+          },
+          {
+            "type": "for",
+            "var": "k",
+            "start": {
+              "type": "literal",
+              "value": 0
+            },
+            "stop": {
+              "type": "var",
+              "name": "d_model"
+            },
+            "step": {
+              "type": "literal",
+              "value": 1
+            },
+            "body": [
+              {
+                "type": "assign",
+                "target": {
+                  "type": "var",
+                  "name": "dot"
+                },
+                "value": {
+                  "type": "binary_op",
+                  "op": "add",
+                  "left": {
+                    "type": "var",
+                    "name": "dot"
+                  },
+                  "right": {
+                    "type": "binary_op",
+                    "op": "mul",
+                    "left": {
+                      "type": "index",
+                      "array": {
+                        "type": "var",
+                        "name": "Q"
+                      },
+                      "index": {
+                        "type": "binary_op",
+                        "op": "add",
+                        "left": {
+                          "type": "binary_op",
+                          "op": "mul",
+                          "left": {
+                            "type": "var",
+                            "name": "i"
+                          },
+                          "right": {
+                            "type": "var",
+                            "name": "d_model"
+                          }
+                        },
+                        "right": {
+                          "type": "var",
+                          "name": "k"
+                        }
+                      }
+                    },
+                    "right": {
+                      "type": "index",
+                      "array": {
+                        "type": "var",
+                        "name": "K"
+                      },
+                      "index": {
+                        "type": "binary_op",
+                        "op": "add",
+                        "left": {
+                          "type": "binary_op",
+                          "op": "mul",
+                          "left": {
+                            "type": "var",
+                            "name": "j"
+                          },
+                          "right": {
+                            "type": "var",
+                            "name": "d_model"
+                          }
+                        },
+                        "right": {
+                          "type": "var",
+                          "name": "k"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "let",
+            "name": "scale",
+            "value": {
+              "type": "binary_op",
+              "op": "div",
+              "left": {
+                "type": "literal",
+                "value": 1.0
+              },
+              "right": {
+                "type": "call",
+                "function": "sqrt",
+                "args": [
+                  {
+                    "type": "call",
+                    "function": "f32",
+                    "args": [
+                      {
+                        "type": "var",
+                        "name": "d_model"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "assign",
+            "target": {
+              "type": "index",
+              "array": {
+                "type": "var",
+                "name": "Scores"
+              },
+              "index": {
+                "type": "var",
+                "name": "idx"
+              }
+            },
+            "value": {
+              "type": "binary_op",
+              "op": "mul",
+              "left": {
+                "type": "var",
+                "name": "dot"
+              },
+              "right": {
+                "type": "var",
+                "name": "scale"
+              }
+            }
+          }
+        ],
+        "else_body": null
+      }
+    ]
+  }
+}
