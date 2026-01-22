@@ -24,7 +24,7 @@ jobs:
         bash atlas/tools/verify_bridge.sh
     
     - name: Upload certificate
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: bridge-certificate
         path: bridge_cert.json
@@ -42,4 +42,3 @@ jobs:
         grep -q "commutant_dim" bridge_cert.json
         
         echo "Certificate validation passed"
-
