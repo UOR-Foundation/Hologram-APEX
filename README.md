@@ -1,3 +1,5 @@
+[![Mirror Symmetry](https://github.com/UOR-Foundation/Hologram-APEX/workflows/Mirror%20Symmetry%20Invariant/badge.svg)](https://github.com/UOR-Foundation/Hologram-APEX/actions/workflows/mirror_symmetry_check.yml)
+
 # Hologram APEX
 
 A math‑first compute stack that turns symmetry, invariants, and positive geometry into **executable proofs** and **verifiable computation**.
