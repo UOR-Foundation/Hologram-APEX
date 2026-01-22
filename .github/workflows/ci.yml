@@ -19,7 +19,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --all-features
+        working-directory: hologram
       - run: cargo check --no-default-features
+        working-directory: hologram
 
   test:
     name: Test Suite
@@ -35,6 +37,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features
+        working-directory: hologram
 
   fmt:
     name: Rustfmt
@@ -45,6 +48,7 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+        working-directory: hologram
 
   clippy:
     name: Clippy
@@ -56,6 +60,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --all-features -- -D warnings -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo -D clippy::float_arithmetic
+        working-directory: hologram
 
   docs:
     name: Documentation
@@ -65,6 +70,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --all-features --no-deps
+        working-directory: hologram
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -88,6 +94,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo bench --all-features --no-fail-fast
+        working-directory: hologram
 
   # Disabled due to proc-macro2 minimal version incompatibility
   # minimal-versions:
@@ -98,4 +105,6 @@ jobs:
   #     - uses: dtolnay/rust-toolchain@nightly
   #     - uses: Swatinem/rust-cache@v2
   #     - run: cargo +nightly update -Z minimal-versions
+  #       working-directory: hologram
   #     - run: cargo check --all-features
+  #       working-directory: hologram
