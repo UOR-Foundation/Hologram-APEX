@@ -1,4 +1,4 @@
-filelock==3.20.0
+filelock==3.20.3
 fsspec==2025.9.0
 -e ../crates/hologram-ffi/interfaces/python
 Jinja2==3.1.6
