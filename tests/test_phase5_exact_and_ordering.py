@@ -30,7 +30,7 @@ def test_no_float_in_dependency_tree():
     import sys
 
     p = subprocess.run(
-        [sys.executable, "util/no_float_lint.py"],
+        [sys.executable, "embeddings/util/no_float_lint.py"],
         capture_output=True,
         text=True,
     )
