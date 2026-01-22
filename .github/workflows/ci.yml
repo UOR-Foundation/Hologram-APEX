@@ -10,6 +10,10 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
+defaults:
+  run:
+    working-directory: hologram
+
 jobs:
   check:
     name: Check
